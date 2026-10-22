@@ -16,6 +16,11 @@ options:
   createIntermediateGroups: true
 settings:
   base:
+    # Shared by the app and its Quick Look extension, which must carry the same version.
+    # 0.2.x per feature; the first two parts change only when the owner says so.
+    MARKETING_VERSION: "0.2.12"
+    # yyyyMMddHHmm. scripts/install.sh stamps the minute it builds.
+    CURRENT_PROJECT_VERSION: "202610211409"
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: complete
     SWIFT_EMIT_LOC_STRINGS: YES
@@ -43,10 +48,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit
         PRODUCT_NAME: TinyEdit
-        # 0.1.x per feature; the first two parts change only when the owner says so.
-        MARKETING_VERSION: "0.2.12"
-        # yyyyMMddHHmm. scripts/install.sh stamps the minute it builds.
-        CURRENT_PROJECT_VERSION: "202610211409"
         ENABLE_APP_SANDBOX: YES
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: TinyEdit/TinyEdit.entitlements
@@ -88,8 +89,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit.quicklook
         PRODUCT_NAME: TinyEditQuickLook
-        MARKETING_VERSION: "0.2.12"
-        CURRENT_PROJECT_VERSION: "202610211409"
         ENABLE_APP_SANDBOX: YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: TinyEditQuickLook/Info.plist
