@@ -3,7 +3,7 @@ import XCTest
 @testable import TinyEdit
 
 /// Settings ▸ Default App lists only types Launch Services can assign, and TinyEdit declares
-/// every one of them, so a request to become the default is never for a type it cannot open.
+/// every one of them, so Change All on an example file always offers TinyEdit.
 final class DefaultAppTests: XCTestCase {
     func testEveryFormatResolvesToADeclaredTextType() {
         let formats = DefaultAppFormat.all
@@ -35,5 +35,19 @@ final class DefaultAppTests: XCTestCase {
         // Every Mac has at least TextEdit for plain text.
         XCTAssertNotNil(model.handlers[UTType.plainText.identifier])
         XCTAssertEqual(model.pendingFormats.count + model.formats.filter(model.opensWithTinyEdit).count, model.formats.count)
+    }
+
+    /// Change All in Finder applies to the example's type, so it must be the format's own.
+    @MainActor
+    func testExampleFileHasTheFormatsType() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = DefaultAppModel(examples: folder)
+        for format in model.formats {
+            let url = try model.exampleFile(for: format)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), format.id)
+            XCTAssertEqual(UTType(filenameExtension: url.pathExtension), format.type, format.id)
+            XCTAssertEqual(try model.exampleFile(for: format), url)
+        }
     }
 }

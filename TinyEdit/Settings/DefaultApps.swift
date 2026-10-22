@@ -36,16 +36,22 @@ struct DefaultAppFormat: Identifiable, Sendable {
     }
 }
 
-/// Which app opens each `DefaultAppFormat`, read from Launch Services, and the requests that make
-/// TinyEdit the default. macOS asks the user to confirm each change.
+/// Which app opens each `DefaultAppFormat`, read from Launch Services. TinyEdit cannot change it
+/// itself: in the sandbox `NSWorkspace.setDefaultApplication` fails with permErr (-54), reported as
+/// "the file couldn't be opened", on every macOS version. So the pane shows an example file of the
+/// format in Finder, where Get Info ▸ Open With ▸ Change All makes the change.
 @MainActor @Observable
 final class DefaultAppModel {
     /// The default app per type identifier; a missing key means no app is set.
     private(set) var handlers: [String: URL] = [:]
-    private(set) var isChanging = false
     private(set) var lastError: String?
 
     let formats = DefaultAppFormat.all
+    private let examples: URL
+
+    init(examples: URL = AppPaths.root.appendingPathComponent("Default App Examples", isDirectory: true)) {
+        self.examples = examples
+    }
 
     func refresh() {
         var found: [String: URL] = [:]
@@ -63,40 +69,23 @@ final class DefaultAppModel {
 
     var pendingFormats: [DefaultAppFormat] { formats.filter { !opensWithTinyEdit($0) } }
 
-    /// Asks for one format at a time and stops at the first one that is refused, so declining
-    /// the first confirmation does not bring up a dozen more.
-    func makeDefault(_ targets: [DefaultAppFormat]) async {
-        guard !isChanging, !targets.isEmpty else { return }
-        isChanging = true
+    /// An empty file of the format, created if needed. Change All in its Get Info applies to every
+    /// file of the type, wherever it is.
+    func exampleFile(for format: DefaultAppFormat) throws -> URL {
+        // The first listed extension, whose system type the format is.
+        let ext = format.extensions.split(separator: " ")[0].dropFirst()
+        let url = examples.appendingPathComponent("Example").appendingPathExtension(String(ext))
+        try FileManager.default.createDirectory(at: examples, withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: url.path) { try Data().write(to: url) }
+        return url
+    }
+
+    func revealExample(for format: DefaultAppFormat) {
         lastError = nil
-        defer {
-            isChanging = false
-            refresh()
+        do {
+            NSWorkspace.shared.activateFileViewerSelecting([try exampleFile(for: format)])
+        } catch {
+            lastError = String(localized: "Couldn’t create the example file: \(error.localizedDescription)")
         }
-        for format in targets {
-            do {
-                try await Self.setDefault(Bundle.main.bundleURL, for: format.type)
-            } catch {
-                if !Self.isUserCancel(error) {
-                    lastError = String(localized: "Couldn’t make TinyEdit the default for \(format.name): \(error.localizedDescription)")
-                }
-                return
-            }
-            refresh()
-        }
-    }
-
-    private static func setDefault(_ app: URL, for type: UTType) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            NSWorkspace.shared.setDefaultApplication(at: app, toOpen: type) { error in
-                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
-            }
-        }
-    }
-
-    private static func isUserCancel(_ error: Error) -> Bool {
-        let ns = error as NSError
-        return (ns.domain == NSCocoaErrorDomain && ns.code == NSUserCancelledError)
-            || (ns.domain == NSOSStatusErrorDomain && ns.code == Int(userCanceledErr))
     }
 }

@@ -1,26 +1,18 @@
 import SwiftUI
 
-/// Shows which app opens each common text format and offers to make TinyEdit the default.
-/// Re-reads Launch Services whenever the app becomes active, so a change made in Finder's
-/// Get Info shows up on return.
+/// Shows which app opens each common text format. TinyEdit cannot make itself the default from the
+/// sandbox, so each row shows an example file in Finder for Get Info ▸ Open With ▸ Change All.
+/// Re-reads Launch Services whenever the app becomes active, so the change shows up on return.
 struct DefaultAppSettingsPane: View {
     @State private var model = DefaultAppModel()
 
     var body: some View {
-        let pending = model.pendingFormats
         Form {
             Section {
-                LabeledContent {
-                    Button("Make Default for All") {
-                        Task { await model.makeDefault(pending) }
-                    }
-                    .disabled(pending.isEmpty || model.isChanging)
-                } label: {
-                    Text(summary(pending: pending.count))
-                }
+                Text(summary(pending: model.pendingFormats.count))
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("macOS asks you to confirm each change. To choose another app later, use Get Info on a file in Finder, then Open With ▸ Change All.")
+                    Text("Only you can change which app opens a format. Click Reveal in Finder, press ⌘I, choose TinyEdit under Open With, then click Change All.")
                     if let error = model.lastError {
                         Text(error).foregroundStyle(Color.error)
                     }
@@ -33,9 +25,8 @@ struct DefaultAppSettingsPane: View {
                 ForEach(model.formats) { format in
                     FormatRow(format: format,
                               handler: model.handlers[format.id],
-                              isTinyEdit: model.opensWithTinyEdit(format),
-                              disabled: model.isChanging) {
-                        Task { await model.makeDefault([format]) }
+                              isTinyEdit: model.opensWithTinyEdit(format)) {
+                        model.revealExample(for: format)
                     }
                 }
             } header: {
@@ -59,8 +50,7 @@ private struct FormatRow: View {
     let format: DefaultAppFormat
     let handler: URL?
     let isTinyEdit: Bool
-    let disabled: Bool
-    let makeDefault: () -> Void
+    let reveal: () -> Void
 
     var body: some View {
         LabeledContent {
@@ -71,7 +61,7 @@ private struct FormatRow: View {
                         .foregroundStyle(Color.success)
                 } else {
                     currentApp
-                    Button("Make Default", action: makeDefault).disabled(disabled)
+                    Button("Reveal in Finder", action: reveal)
                 }
             }
         } label: {

@@ -24217,110 +24217,6 @@
         }
       }
     },
-    "Make Default for All": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Make Default for All"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全部设为默认"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全部設為預設"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "すべてデフォルトにする"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "모두 기본으로 설정"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Für alle als Standard"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Définir par défaut pour tous"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Definir como predeterminada para todos"
-          }
-        }
-      }
-    },
-    "macOS asks you to confirm each change. To choose another app later, use Get Info on a file in Finder, then Open With ▸ Change All.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS asks you to confirm each change. To choose another app later, use Get Info on a file in Finder, then Open With ▸ Change All."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS 会请你确认每一项更改。以后若要改用其他应用，可在访达中对文件“显示简介”，然后在“打开方式”中选择应用并点按“全部更改”。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS 會請你確認每一項更改。之後若要改用其他 App，可在 Finder 中對檔案「取得資訊」，然後在「打開檔案的應用程式」中選擇 App 並按一下「全部更改」。"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "変更ごとに macOS が確認を求めます。後でほかの App に戻すには、Finder でファイルの「情報を見る」を開き、「このアプリケーションで開く」で App を選んで「すべてを変更」をクリックします。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS가 변경할 때마다 확인을 요청합니다. 나중에 다른 앱을 사용하려면 Finder에서 파일의 '정보 가져오기'를 열고 '다음으로 열기'에서 앱을 선택한 다음 '모두 변경'을 클릭하십시오."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS fragt bei jeder Änderung nach. Um später eine andere App zu wählen, öffne im Finder „Informationen“ zu einer Datei und wähle unter „Öffnen mit“ eine App und dann „Alle ändern“."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS vous demande de confirmer chaque modification. Pour choisir une autre app plus tard, ouvrez « Lire les informations » d’un fichier dans le Finder, puis choisissez l’app sous « Ouvrir avec » et cliquez sur « Tout modifier »."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS te pedirá que confirmes cada cambio. Para elegir otra app más adelante, usa «Obtener información» sobre un archivo en el Finder, elige la app en «Abrir con» y haz clic en «Cambiar todo»."
-          }
-        }
-      }
-    },
     "Formats": {
       "localizations": {
         "en": {
@@ -24529,58 +24425,6 @@
         }
       }
     },
-    "Make Default": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Make Default"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "设为默认"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "設為預設"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "デフォルトにする"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "기본으로 설정"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Als Standard"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Définir par défaut"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Definir como predeterminada"
-          }
-        }
-      }
-    },
     "No default app": {
       "localizations": {
         "en": {
@@ -24681,58 +24525,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Archivo de registro"
-          }
-        }
-      }
-    },
-    "Couldn’t make TinyEdit the default for %@: %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn’t make TinyEdit the default for %1$@: %2$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法将 TinyEdit 设为 %1$@ 的默认应用：%2$@"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無法將 TinyEdit 設為 %1$@ 的預設 App：%2$@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TinyEdit を %1$@ のデフォルトにできませんでした: %2$@"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TinyEdit를 %1$@의 기본 앱으로 설정할 수 없습니다: %2$@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TinyEdit konnte nicht als Standard für %1$@ festgelegt werden: %2$@"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Impossible de définir TinyEdit par défaut pour %1$@ : %2$@"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se pudo definir TinyEdit como predeterminada para %1$@: %2$@"
           }
         }
       }
@@ -25449,6 +25241,110 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Only you can change which app opens a format. Click Reveal in Finder, press ⌘I, choose TinyEdit under Open With, then click Change All.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only you can change which app opens a format. Click Reveal in Finder, press ⌘I, choose TinyEdit under Open With, then click Change All."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有你本人能更改打开某种格式的应用。点按“在访达中显示”，按 ⌘I，在“打开方式”中选择 TinyEdit，然后点按“全部更改”。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有你本人能更改打開某種格式的 App。按一下「在 Finder 中顯示」，按 ⌘I，在「打開檔案的應用程式」中選擇 TinyEdit，然後按一下「全部更改」。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォーマットを開く App を変更できるのはユーザ本人だけです。「Finder で表示」をクリックして ⌘I を押し、「このアプリケーションで開く」で TinyEdit を選んでから「すべてを変更」をクリックします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "포맷을 여는 앱은 사용자만 변경할 수 있습니다. ‘Finder에서 보기’를 클릭하고 ⌘I를 누른 다음, ‘다음으로 열기’에서 TinyEdit을 선택하고 ‘모두 변경’을 클릭하십시오."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nur du kannst festlegen, welche App ein Format öffnet. Klicke auf „Im Finder zeigen“, drücke ⌘I, wähle unter „Öffnen mit“ TinyEdit und klicke dann auf „Alle ändern“."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous seul pouvez choisir l’app qui ouvre un format. Cliquez sur « Afficher dans le Finder », appuyez sur ⌘I, choisissez TinyEdit sous « Ouvrir avec », puis cliquez sur « Tout modifier »."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo tú puedes cambiar qué app abre un formato. Haz clic en «Mostrar en el Finder», pulsa ⌘I, elige TinyEdit en «Abrir con» y haz clic en «Cambiar todo»."
+          }
+        }
+      }
+    },
+    "Couldn’t create the example file: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t create the example file: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法创建示例文件：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法建立範例檔案：%@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サンプルファイルを作成できませんでした: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "예제 파일을 생성할 수 없습니다: %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Beispieldatei konnte nicht erstellt werden: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de créer le fichier d’exemple : %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo crear el archivo de ejemplo: %@"
           }
         }
       }
