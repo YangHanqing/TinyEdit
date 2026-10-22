@@ -865,6 +865,26 @@ final class AppStateIntegrationTests: XCTestCase {
         XCTAssertEqual(s.selectionStats?.words, 10_000 + 4)
     }
 
+    func testJSONContainerCountFollowsCaretAndClearsOutsideJSON() async throws {
+        let s = await launch()
+        let source = #"{"items":[1,2],"flag":true}"#
+        type(source, into: s)
+        s.host.activate(s.activeStore!, settings: s.settings)
+        s.setLanguage(.json)
+        s.host.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        XCTAssertEqual(s.jsonContainerSize, .init(count: 2, isObject: true))
+        s.host.textView.setSelectedRange(NSRange(location: 3, length: 0))
+        XCTAssertEqual(s.jsonContainerSize, .init(count: 2, isObject: false))
+        let index = (source as NSString).range(of: "2]").location
+        s.host.textView.setSelectedRange(NSRange(location: index, length: 0))
+        s.host.textView.insertText(",3", replacementRange: NSRange(location: index + 1, length: 0))
+        s.refreshJSONCaret()
+        XCTAssertEqual(s.jsonContainerSize, .init(count: 3, isObject: false))
+        XCTAssertTrue(s.visibleJSONMarks.isEmpty) // No sizes are added to the editor's marks.
+        s.setLanguage(.plain)
+        XCTAssertNil(s.jsonContainerSize)
+    }
+
     func testJSONButtonsFollowTheCaretAndOpenTheValue() async throws {
         let s = await launch()
         type(#"{"name": "Ada", "payload": "{\"x\":[1,2]}", "n": 3}"#, into: s)
@@ -979,7 +999,7 @@ final class AppStateIntegrationTests: XCTestCase {
         type("{\n  \"created\": 1700000000,\n  \"home\": \"https://x.test/\"\n}", into: s)
         s.host.activate(s.activeStore!, settings: s.settings)
         s.setLanguage(.json)
-        let marks = s.visibleJSONMarks.filter { if case .size = $0.kind { false } else { true } }
+        let marks = s.visibleJSONMarks
         XCTAssertEqual(marks.count, 2)
         guard case .date = marks.first?.kind, case .link = marks.last?.kind else { return XCTFail("\(marks)") }
         let pasteboard = NSPasteboard.withUniqueName()

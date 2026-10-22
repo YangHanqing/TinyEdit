@@ -161,7 +161,6 @@ private struct EditorSettingsPane: View {
                     Toggle("Local time of Unix timestamps", isOn: appState.setting(\.jsonMarkTimes))
                     Toggle("JWT expiry", isOn: appState.setting(\.jsonMarkJWTExpiry))
                     Toggle("Decode icons", isOn: appState.setting(\.jsonMarkDecodes))
-                    Toggle("Object and array sizes", isOn: appState.setting(\.jsonMarkSizes))
                 }
                 .toggleStyle(.checkbox)
             } header: {

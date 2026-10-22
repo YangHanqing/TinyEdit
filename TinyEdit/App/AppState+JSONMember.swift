@@ -64,20 +64,23 @@ extension AppState {
         if store.length <= JSONLocator.synchronousLimit {
             let units = JSONLocator.units(of: ns)
             setJSONCaret(JSONLocator.member(around: selection, in: units).map { JSONCaretInfo($0, in: units) })
-            if needsMarks { setJSONMarks(JSONLocator.valueMarks(in: units), generation: generation, store: store) }
+            let context = JSONLocator.context(around: selection, in: units, collectMarks: needsMarks)
+            jsonContainerSize = context.size
+            if needsMarks { setJSONMarks(context.marks, generation: generation, store: store) }
             return
         }
         jsonCaretTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(120))
             guard let self, !Task.isCancelled, store.generation == generation else { return }
             let units = JSONLocator.units(of: ns)
-            let (info, marks) = await Task.detached(priority: .userInitiated) {
+            let (info, context) = await Task.detached(priority: .userInitiated) {
                 (JSONLocator.member(around: selection, in: units).map { JSONCaretInfo($0, in: units) },
-                 needsMarks ? JSONLocator.valueMarks(in: units) : nil)
+                 JSONLocator.context(around: selection, in: units, collectMarks: needsMarks))
             }.value
             guard !Task.isCancelled, store.generation == generation else { return }
             self.setJSONCaret(info)
-            if let marks { self.setJSONMarks(marks, generation: generation, store: store) }
+            self.jsonContainerSize = context.size
+            if needsMarks { self.setJSONMarks(context.marks, generation: generation, store: store) }
         }
     }
 
@@ -103,7 +106,7 @@ extension AppState {
         case .link(let url): NSWorkspace.shared.open(url)
         case .date(let date, let milliseconds): copyDate(date, milliseconds: milliseconds, to: pasteboard)
         case .decode: if placeCaret(in: valueRange) { decodeJSONValue() }
-        case .color, .size: break
+        case .color: break
         }
     }
 
@@ -119,6 +122,7 @@ extension AppState {
 
     /// A value card stays only while the caret is on the member it was opened for.
     func setJSONCaret(_ info: JSONCaretInfo?) {
+        if info == nil { jsonContainerSize = nil }
         if info != jsonCaret { jsonCaret = info }
         if let card = jsonValueCard, info?.path != card.path || card.bufferID != session.selectedBufferID {
             dismissJSONValueCard()

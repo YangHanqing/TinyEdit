@@ -53,8 +53,6 @@ final class JSONValueInsightTests: XCTestCase {
         options.jwtExpiry = true
         XCTAssertEqual(options.shown(.decode(jwtExpiry: expiry)), .decode(jwtExpiry: expiry))
         XCTAssertNil(options.shown(.decode(jwtExpiry: nil)))
-        options.sizes = false
-        XCTAssertNil(options.shown(.size(3, isObject: false)))
         options.links = false
         XCTAssertNil(options.shown(.link(URL(string: "https://x.test")!)))
         XCTAssertEqual(options.shown(.image(.remote)), .image(.remote))

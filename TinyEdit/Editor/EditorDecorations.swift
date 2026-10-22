@@ -17,7 +17,6 @@ struct JSONMarkOptions: Equatable {
     /// A JWT's expiry; with this off, a JWT gets the decode icon when `decodes` is on.
     var jwtExpiry = true
     var decodes = true
-    var sizes = true
 
     /// The mark as drawn under these options: a JWT's expiry dropped when it is off, nil when hidden.
     func shown(_ kind: JSONValueMark.Kind) -> JSONValueMark.Kind? {
@@ -26,7 +25,6 @@ struct JSONMarkOptions: Equatable {
         case .link: links ? kind : nil
         case .color: colors ? kind : nil
         case .date: times ? kind : nil
-        case .size: sizes ? kind : nil
         case .decode(let expiry?) where jwtExpiry: .decode(jwtExpiry: expiry)
         case .decode: decodes ? .decode(jwtExpiry: nil) : nil
         }
@@ -45,7 +43,7 @@ struct EditorDecorations: Equatable {
 
     /// A mark after a line of a JSON tab for a value on it: a Preview icon for a picture, an open icon for
     /// a link, a swatch for a color, the local time for a Unix timestamp, a decode icon (with the expiry for
-    /// a JWT that has one), the size of an object or array. All but the swatch and the size take a click.
+    /// a JWT that has one). All but the swatch take a click.
     struct ValueMark: Equatable {
         enum Kind: Equatable {
             case image, link, decode
@@ -53,7 +51,6 @@ struct EditorDecorations: Equatable {
             case time(String)
             /// `exp 2026-01-01 08:00` and `expired` or `in 3 days`; both empty when only the symbol fits.
             case jwt(String, status: String, expired: Bool)
-            case size(String)
         }
 
         /// The mark's drawing, hit and hover area.
@@ -67,7 +64,7 @@ struct EditorDecorations: Equatable {
 
         var isClickable: Bool {
             switch kind {
-            case .color, .size: false
+            case .color: false
             default: true
             }
         }
@@ -203,9 +200,6 @@ extension EditorTextView {
                 let e = JSONValueInsight.expiryText(expiry)
                 (kind, width) = (.jwt(e.text, status: e.status, expired: e.expired),
                                  side + 4 + labelWidth(EditorDecorations.ValueMark.jwtLabel(e.text, e.status), markFont) + 8)
-            case .size(let count, let isObject):
-                let label = isObject ? String(localized: "\(count) keys") : String(localized: "\(count) items")
-                (kind, width) = (.size(label), labelWidth(label, markFont) + 8)
             }
             var rect = NSRect(x: (x + max(space, 6)).rounded(), y: (origin.y + frame.minY + bounds.minY + (bounds.height - side) / 2).rounded(),
                               width: width, height: side)
@@ -408,7 +402,7 @@ enum EditorDecorationDrawing {
             let outline = NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3)
             outline.lineWidth = 1
             outline.stroke()
-        case .time(let label), .size(let label):
+        case .time(let label):
             guard let font else { return }
             drawLabel(NSAttributedString(string: label, attributes: labelAttributes(font, hovered: mark.hovered)),
                       at: mark.rect.minX + 4, in: mark.rect)

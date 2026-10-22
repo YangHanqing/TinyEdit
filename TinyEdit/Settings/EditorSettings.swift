@@ -87,7 +87,6 @@ struct EditorSettings: Equatable, Sendable {
     var jsonMarkTimes = true
     var jsonMarkJWTExpiry = true
     var jsonMarkDecodes = true
-    var jsonMarkSizes = true
 
     private enum Key {
         static let fontSize = "tinyedit.fontSize"
@@ -113,7 +112,6 @@ struct EditorSettings: Equatable, Sendable {
         static let jsonMarkTimes = "tinyedit.jsonMarkTimes"
         static let jsonMarkJWTExpiry = "tinyedit.jsonMarkJWTExpiry"
         static let jsonMarkDecodes = "tinyedit.jsonMarkDecodes"
-        static let jsonMarkSizes = "tinyedit.jsonMarkSizes"
     }
 
     static func load(from d: UserDefaults = .standard) -> EditorSettings {
@@ -143,7 +141,6 @@ struct EditorSettings: Equatable, Sendable {
         if d.object(forKey: Key.jsonMarkTimes) != nil { s.jsonMarkTimes = d.bool(forKey: Key.jsonMarkTimes) }
         if d.object(forKey: Key.jsonMarkJWTExpiry) != nil { s.jsonMarkJWTExpiry = d.bool(forKey: Key.jsonMarkJWTExpiry) }
         if d.object(forKey: Key.jsonMarkDecodes) != nil { s.jsonMarkDecodes = d.bool(forKey: Key.jsonMarkDecodes) }
-        if d.object(forKey: Key.jsonMarkSizes) != nil { s.jsonMarkSizes = d.bool(forKey: Key.jsonMarkSizes) }
         if let raw = d.string(forKey: Key.appearance), let mode = AppearanceMode(rawValue: raw) { s.appearance = mode }
         if let raw = d.string(forKey: Key.appIcon) {
             // Map retired icons to the closest remaining design when upgrading.
@@ -183,7 +180,6 @@ struct EditorSettings: Equatable, Sendable {
         d.set(jsonMarkTimes, forKey: Key.jsonMarkTimes)
         d.set(jsonMarkJWTExpiry, forKey: Key.jsonMarkJWTExpiry)
         d.set(jsonMarkDecodes, forKey: Key.jsonMarkDecodes)
-        d.set(jsonMarkSizes, forKey: Key.jsonMarkSizes)
         d.set(appearance.rawValue, forKey: Key.appearance)
         d.set(appIcon.rawValue, forKey: Key.appIcon)
         d.set(backgroundPattern.rawValue, forKey: Key.backgroundPattern)
@@ -194,7 +190,7 @@ struct EditorSettings: Equatable, Sendable {
 
     var decorationOptions: EditorDecorationOptions {
         EditorDecorationOptions(currentLine: highlightCurrentLine, indentGuides: showIndentGuides, invisibles: showInvisibles,
-                                jsonMarks: JSONMarkOptions(images: jsonMarkImages, links: jsonMarkLinks, colors: jsonMarkColors, times: jsonMarkTimes, jwtExpiry: jsonMarkJWTExpiry, decodes: jsonMarkDecodes, sizes: jsonMarkSizes))
+                                jsonMarks: JSONMarkOptions(images: jsonMarkImages, links: jsonMarkLinks, colors: jsonMarkColors, times: jsonMarkTimes, jwtExpiry: jsonMarkJWTExpiry, decodes: jsonMarkDecodes))
     }
 
     func clamped() -> EditorSettings {

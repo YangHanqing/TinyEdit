@@ -23,6 +23,9 @@ struct StatusBar: View {
                 Text("Tasks \(tasks.done)/\(tasks.total)")
                     .toolTip(String(localized: "Done / all tasks in this tab"))
             }
+            if let size = appState.jsonContainerSize {
+                Text(size.label).monospacedDigit()
+            }
             if let json = appState.jsonCaret {
                 jsonButtons(json)
             }

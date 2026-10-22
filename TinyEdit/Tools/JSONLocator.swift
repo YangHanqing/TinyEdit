@@ -75,9 +75,6 @@ struct JSONValueMark: Equatable, Sendable {
         case date(Date, milliseconds: Bool)
         /// A JWT, Base64, `%XX` or `\uXXXX` string that Decode reads, with a JWT's `exp` when it has one.
         case decode(jwtExpiry: Date?)
-        /// An object or array that spans lines, with how many members or elements it holds. Also the
-        /// top-level value, which is not a member.
-        case size(Int, isObject: Bool)
     }
 
     var valueRange: NSRange
@@ -86,6 +83,16 @@ struct JSONValueMark: Equatable, Sendable {
     var isImage: Bool {
         if case .image = kind { return true }
         return false
+    }
+}
+
+/// The innermost object or array around the caret, for the status bar.
+struct JSONContainerSize: Equatable, Sendable {
+    var count: Int
+    var isObject: Bool
+
+    var label: String {
+        isObject ? String(localized: "\(count) keys") : String(localized: "\(count) items")
     }
 }
 
@@ -106,12 +113,23 @@ enum JSONLocator {
     }
 
     /// Every value the editor marks, in document order, up to `limit`. The same tolerant pass as
-    /// `member(around:)`, so each one but a top-level size is the member a caret inside it finds.
+    /// `member(around:)`, so each mark is the member a caret inside it finds.
     static func valueMarks(in u: [UInt16], limit: Int = 2_000) -> [JSONValueMark] {
         var scanner = Scanner(u: u, target: nil, markLimit: limit)
         _ = scanner.run()
-        // Containers are marked when they close, after what they hold.
+        // Preserve document order for the editor decorations.
         return scanner.marks.sorted { $0.valueRange.location < $1.valueRange.location }
+    }
+
+    /// Count the nearest enclosing container, including single-line and unfinished JSON. The count
+    /// is independent of the editor mark limit. Collect marks in the same pass after a document edit.
+    static func context(around range: NSRange, in u: [UInt16], collectMarks: Bool = false)
+        -> (marks: [JSONValueMark], size: JSONContainerSize?) {
+        guard range.location >= 0, NSMaxRange(range) <= u.count else { return ([], nil) }
+        var scanner = Scanner(u: u, target: nil, markLimit: collectMarks ? 2_000 : 0)
+        scanner.sizeTarget = range
+        _ = scanner.run()
+        return (scanner.marks.sorted { $0.valueRange.location < $1.valueRange.location }, scanner.containerSize)
     }
 
     /// The value as it is useful on its own: a string decoded, an object or array as written but
@@ -227,8 +245,6 @@ enum JSONLocator {
         var index = 0
         /// Members or elements completed so far; counted only when collecting marks.
         var count = 0
-        /// `Scanner.newlines` when the container opened.
-        var newlinesBefore = 0
     }
 
     private struct Scanner {
@@ -238,8 +254,8 @@ enum JSONLocator {
         var frames: [Frame] = []
         let markLimit: Int
         var marks: [JSONValueMark] = []
-        /// Line breaks passed, to tell a container that spans lines.
-        var newlines = 0
+        var sizeTarget: NSRange?
+        var containerSize: JSONContainerSize?
 
         init(u: [UInt16], target: NSRange?, markLimit: Int = 0) {
             self.u = u
@@ -254,16 +270,15 @@ enum JSONLocator {
                 let c = u[i]
                 switch c {
                 case 0x20, 0x09, 0x0A, 0x0D:
-                    if c == 0x0A { newlines += 1 }
                     i += 1
                 case 0x7B, 0x5B:   // { [
-                    frames.append(Frame(isObject: c == 0x7B, start: i, newlinesBefore: newlines))
+                    frames.append(Frame(isObject: c == 0x7B, start: i))
                     i += 1
                 case 0x7D, 0x5D:   // } ]
                     i += 1
                     guard let f = frames.popLast() else { continue }
                     let r = NSRange(location: f.start, length: i - f.start)
-                    markSize(f, r)
+                    recordSize(f, r)
                     if let m = complete(r, f.isObject ? .object : .array) { return m }
                 case 0x3A:   // :
                     if frames.last?.isObject == true { frames[frames.count - 1].afterColon = true }
@@ -302,7 +317,7 @@ enum JSONLocator {
             }
             // Unclosed containers end at the end of the text.
             while let f = frames.popLast() {
-                markSize(f, NSRange(location: f.start, length: n - f.start))
+                recordSize(f, NSRange(location: f.start, length: n - f.start))
                 if let m = complete(NSRange(location: f.start, length: n - f.start), f.isObject ? .object : .array) {
                     return m
                 }
@@ -310,10 +325,13 @@ enum JSONLocator {
             return nil
         }
 
-        /// A closed container that spans lines, when collecting marks.
-        private mutating func markSize(_ f: Frame, _ r: NSRange) {
-            guard target == nil, newlines > f.newlinesBefore, marks.count < markLimit else { return }
-            marks.append(JSONValueMark(valueRange: r, kind: .size(f.count, isObject: f.isObject)))
+        /// Containers complete innermost first. Include their key so a caret on an object/array
+        /// property's name shows that property's count, while scalar values show their parent's count.
+        private mutating func recordSize(_ f: Frame, _ r: NSRange) {
+            guard containerSize == nil, let sizeTarget else { return }
+            let start = frames.last?.isObject == true ? (frames.last?.key?.range.location ?? r.location) : r.location
+            guard start <= sizeTarget.location, NSMaxRange(sizeTarget) <= NSMaxRange(r) else { return }
+            containerSize = JSONContainerSize(count: f.count, isObject: f.isObject)
         }
 
         private var expectsKey: Bool {

@@ -37,6 +37,7 @@ final class AppState {
     var selectionStats: SelectionStats?
     /// The JSON member around the caret, for the status bar's copy buttons. Written only when it changes.
     var jsonCaret: JSONCaretInfo?
+    var jsonContainerSize: JSONContainerSize?
     /// The decodes or picture a JSON value button brought up. Session-only.
     var jsonValueCard: JSONValueCard?
     var toast: ToastModel?

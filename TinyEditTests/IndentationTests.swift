@@ -68,11 +68,9 @@ final class IndentationTests: XCTestCase {
         let d = try XCTUnwrap(UserDefaults(suiteName: "IndentationTests.\(UUID())"))
         var s = EditorSettings()
         s.jsonMarkJWTExpiry = false
-        s.jsonMarkSizes = false
         s.save(to: d)
         var expected = JSONMarkOptions()
         expected.jwtExpiry = false
-        expected.sizes = false
         XCTAssertEqual(EditorSettings.load(from: d).decorationOptions.jsonMarks, expected)
     }
 

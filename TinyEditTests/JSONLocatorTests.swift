@@ -105,7 +105,6 @@ final class JSONLocatorTests: XCTestCase {
         let ns = doc as NSString
         func range(_ value: String) -> NSRange { ns.range(of: "\"" + value + "\"") }
         XCTAssertEqual(marks, [
-            JSONValueMark(valueRange: NSRange(location: 0, length: ns.length), kind: .size(8, isObject: true)),
             JSONValueMark(valueRange: range("https://cdn.test/u/1"), kind: .image(.remote)),       // image-like key
             JSONValueMark(valueRange: range("https://x.test/"), kind: .link(URL(string: "https://x.test/")!)),
             JSONValueMark(valueRange: range("https://x.test/a.PNG"), kind: .image(.remote)),       // extension, in an array
@@ -139,7 +138,6 @@ final class JSONLocatorTests: XCTestCase {
         let ns = doc as NSString
         func range(_ value: String) -> NSRange { ns.range(of: value) }
         XCTAssertEqual(JSONLocator.valueMarks(in: u), [
-            JSONValueMark(valueRange: NSRange(location: 0, length: ns.length), kind: .size(10, isObject: true)),
             JSONValueMark(valueRange: range(##""#FF8800""##), kind: .color(JSONColor(red: 1, green: 136.0 / 255, blue: 0, alpha: 1))),
             JSONValueMark(valueRange: range(#""rgb(0, 128, 255)""#), kind: .color(JSONColor(red: 0, green: 128.0 / 255, blue: 1, alpha: 1))),
             JSONValueMark(valueRange: NSRange(location: range("1700000000,").location, length: 10), kind: .date(Date(timeIntervalSince1970: 1_700_000_000), milliseconds: false)),
@@ -147,7 +145,7 @@ final class JSONLocatorTests: XCTestCase {
         ])
     }
 
-    func testValueMarksIncludeDecodesJWTsAndSizes() {
+    func testValueMarksIncludeDecodesAndJWTs() {
         let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzY3MjI1NjAwfQ.c2ln"       // exp 1767225600
         let bare = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2ln"                          // no exp
         let doc = """
@@ -168,21 +166,44 @@ final class JSONLocatorTests: XCTestCase {
         let u = Array(doc.utf16)
         let ns = doc as NSString
         func quoted(_ value: String) -> NSRange { ns.range(of: "\"" + value + "\"") }
-        let list = ns.range(of: "[\n      1")
-        let empty = ns.range(of: "{\n    }")
-        let second = ns.range(of: "{\n    \"b\"")
         XCTAssertEqual(JSONLocator.valueMarks(in: u), [
-            JSONValueMark(valueRange: NSRange(location: 0, length: ns.length), kind: .size(2, isObject: false)),
             JSONValueMark(valueRange: quoted(jwt), kind: .decode(jwtExpiry: Date(timeIntervalSince1970: 1_767_225_600))),
             JSONValueMark(valueRange: quoted(bare), kind: .decode(jwtExpiry: nil)),
-            JSONValueMark(valueRange: NSRange(location: second.location, length: NSMaxRange(ns.range(of: "}\n  }")) - second.location),
-                          kind: .size(5, isObject: true)),
             JSONValueMark(valueRange: quoted("aGVsbG8gd29ybGQgZnJvbSBqc29u"), kind: .decode(jwtExpiry: nil)),
             JSONValueMark(valueRange: quoted("a%20b%2Fc"), kind: .decode(jwtExpiry: nil)),
-            JSONValueMark(valueRange: NSRange(location: list.location, length: NSMaxRange(ns.range(of: "3\n    ]")) - list.location),
-                          kind: .size(3, isObject: false)),
-            JSONValueMark(valueRange: NSRange(location: empty.location, length: empty.length), kind: .size(0, isObject: true)),
         ])
+    }
+
+    func testContainerSizeFollowsInnermostContext() throws {
+        let source = #"{"items":[1,{"nested":[]},3],"empty":{},"flag":true}"#
+        let ns = source as NSString
+        let u = Array(source.utf16)
+        func size(at text: String) -> JSONContainerSize? {
+            JSONLocator.context(around: NSRange(location: ns.range(of: text).location, length: 0), in: u).size
+        }
+        XCTAssertEqual(size(at: source), .init(count: 3, isObject: true))
+        XCTAssertEqual(size(at: "\"items\""), .init(count: 3, isObject: false))
+        XCTAssertEqual(size(at: "1,"), .init(count: 3, isObject: false))
+        XCTAssertEqual(size(at: "{\"nested"), .init(count: 1, isObject: true))
+        XCTAssertEqual(size(at: "\"nested\""), .init(count: 0, isObject: false))
+        XCTAssertEqual(size(at: "\"empty\""), .init(count: 0, isObject: true))
+        XCTAssertEqual(size(at: "true"), .init(count: 3, isObject: true))
+        XCTAssertNil(JSONLocator.context(around: NSRange(location: 0, length: 0), in: Array("123".utf16)).size)
+        XCTAssertNil(JSONLocator.context(around: NSRange(location: 0, length: 0), in: []).size)
+        let selection = ns.range(of: "[]},3")
+        XCTAssertEqual(JSONLocator.context(around: selection, in: u).size, .init(count: 3, isObject: false))
+    }
+
+    func testContainerSizeSupportsUnfinishedJSONAndIsNotLimitedByMarks() {
+        let source = "{\n  \"items\": [\n    1, 2, 3"
+        let u = Array(source.utf16)
+        XCTAssertEqual(JSONLocator.context(around: NSRange(location: u.count, length: 0), in: u).size,
+                       .init(count: 3, isObject: false))
+        let many = "[" + Array(repeating: "\"https://example.com\"", count: 2_100).joined(separator: ",") + ",[]]"
+        let context = JSONLocator.context(around: NSRange(location: many.utf16.count - 2, length: 0),
+                                          in: Array(many.utf16), collectMarks: true)
+        XCTAssertEqual(context.marks.count, 2_000)
+        XCTAssertEqual(context.size, .init(count: 0, isObject: false))
     }
 
     func testUnitsCopyTheWholeString() {

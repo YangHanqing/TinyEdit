@@ -164,10 +164,7 @@ final class EditorDecorationsTests: XCTestCase {
         settle(window)
         host.textView.updateOverlays()
         let decorations = host.textView.currentDecorations
-        guard case .size = decorations.valueMarks.first?.kind else { return XCTFail("no size on the first line") }
-        XCTAssertNil(host.textView.valueMark(at: NSPoint(x: decorations.valueMarks[0].rect.midX,
-                                                         y: decorations.valueMarks[0].rect.midY)))   // a size takes no click
-        let marks = Array(decorations.valueMarks.dropFirst())
+        let marks = decorations.valueMarks
         let time = JSONValueInsight.dateText(Date(timeIntervalSince1970: 1_700_000_000), milliseconds: false)
         XCTAssertEqual(marks.map(\.kind), [.link, .color(JSONColor(red: 1, green: 136.0 / 255, blue: 0, alpha: 1)), .time(time)])
         let font = try XCTUnwrap(decorations.markFont)
@@ -181,7 +178,6 @@ final class EditorDecorationsTests: XCTestCase {
 
         // Settings hide marks without a new scan.
         host.textView.decorationOptions.jsonMarks.links = false
-        host.textView.decorationOptions.jsonMarks.sizes = false
         host.textView.updateOverlays()
         XCTAssertEqual(host.textView.currentDecorations.valueMarks.map(\.valueRange), [marks[1].valueRange, marks[2].valueRange])
     }
