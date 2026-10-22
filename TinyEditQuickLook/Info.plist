@@ -31,6 +31,36 @@
 			<key>QLSupportedContentTypes</key>
 			<array>
 				<string>net.daringfireball.markdown</string>
+				<string>com.apple.log</string>
+				<string>public.json</string>
+				<string>public.geojson</string>
+				<string>public.yaml</string>
+				<string>public.toml</string>
+				<string>com.microsoft.ini</string>
+				<string>public.xml</string>
+				<string>public.css</string>
+				<string>public.python-script</string>
+				<string>com.netscape.javascript-source</string>
+				<string>com.microsoft.typescript</string>
+				<string>com.sun.java-source</string>
+				<string>public.swift-source</string>
+				<string>public.c-source</string>
+				<string>public.c-header</string>
+				<string>public.c-plus-plus-source</string>
+				<string>public.c-plus-plus-header</string>
+				<string>public.objective-c-source</string>
+				<string>public.objective-c-plus-plus-source</string>
+				<string>public.php-script</string>
+				<string>public.ruby-script</string>
+				<string>public.perl-script</string>
+				<string>public.shell-script</string>
+				<string>public.bash-script</string>
+				<string>public.zsh-script</string>
+				<string>public.ksh-script</string>
+				<string>com.apple.terminal.shell-script</string>
+				<string>org.iso.sql</string>
+				<string>public.make-source</string>
+				<string>public.patch-file</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>

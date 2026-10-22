@@ -2,8 +2,9 @@ import AppKit
 import QuickLookUI
 import SwiftUI
 
-/// Quick Look (Space in Finder) for Markdown files: the editor's preview, read-only. The sandbox
-/// reaches only the previewed file and the extension has no network, so images show as their alt text.
+/// Quick Look (Space in Finder) for text files: Markdown as the editor's preview renders it, other
+/// text highlighted as the editor colors it, both read-only. The sandbox reaches only the previewed
+/// file and the extension has no network, so Markdown images show as their alt text.
 final class PreviewViewController: NSViewController, QLPreviewingController {
     override func loadView() {
         view = NSView()
@@ -11,19 +12,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
     }
 
     func preparePreviewOfFile(at url: URL) async throws {
-        let blocks: [MarkdownNode]? = try await Task.detached(priority: .userInitiated) {
-            // Same decoding and size policy as opening the file in the editor and its preview pane.
-            let text = try FileLoader.load(from: url).logicalLF
-            guard text.utf8.count <= HighlightPolicy.offLimit else { return nil }
-            return try? MarkdownDocument.parse(text)
-        }.value
-        let page = MarkdownPage(blocks: blocks ?? [],
-                                message: blocks == nil ? String(localized: "Preview unavailable") : nil)
-            .environment(\.markdownDocumentURL, url)
-            .environment(\.markdownImagesLoad, false)
-        let host = NSHostingView(rootView: page)
-        host.frame = view.bounds
-        host.autoresizingMask = [.width, .height]
-        view.addSubview(host)
+        let content = try await Task.detached(priority: .userInitiated) { try QuickLookContent.load(url) }.value
+        let preview: NSView
+        switch content {
+        case .markdown(let blocks):
+            preview = NSHostingView(rootView: MarkdownPage(blocks: blocks ?? [],
+                                                           message: blocks == nil ? String(localized: "Preview unavailable") : nil)
+                .environment(\.markdownDocumentURL, url)
+                .environment(\.markdownImagesLoad, false))
+        case .text(let text, let spans):
+            preview = TextPreviewView.make(text: text, spans: spans)
+        }
+        preview.frame = view.bounds
+        preview.autoresizingMask = [.width, .height]
+        view.addSubview(preview)
     }
 }
