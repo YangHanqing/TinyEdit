@@ -94,32 +94,95 @@ final class JSONLocatorTests: XCTestCase {
         XCTAssertTrue(AppState.openedText("[1]", kind: .array).isJSON)
     }
 
-    func testImageValuesAreThePicturesPreviewWouldShow() {
+    func testValueMarksIncludeThePicturesPreviewWouldShow() {
         let doc = #"""
         {"avatar": "https://cdn.test/u/1", "home": "https://x.test/", "list": ["https://x.test/a.PNG", "b"],
          "icon": "data:image/png;base64,AAAA", "text": "data:text/plain,hi", "logo": "h\u0074tps://x.test/l",
          "nested": {"thumbnailUrl": "https://x.test/t?s=1"}, "escaped": "https:\/\/x.test\/e.jpg"}
         """#
         let u = Array(doc.utf16)
-        let images = JSONLocator.imageValues(in: u)
+        let marks = JSONLocator.valueMarks(in: u)
         let ns = doc as NSString
         func range(_ value: String) -> NSRange { ns.range(of: "\"" + value + "\"") }
-        XCTAssertEqual(images, [
-            JSONImageValue(valueRange: range("https://cdn.test/u/1"), source: .remote),       // image-like key
-            JSONImageValue(valueRange: range("https://x.test/a.PNG"), source: .remote),       // extension, in an array
-            JSONImageValue(valueRange: range("data:image/png;base64,AAAA"), source: .inline),
-            JSONImageValue(valueRange: range(#"h\u0074tps://x.test/l"#), source: .remote),
-            JSONImageValue(valueRange: range("https://x.test/t?s=1"), source: .remote),
-            JSONImageValue(valueRange: range("https:\\/\\/x.test\\/e.jpg"), source: .remote),  // escapes decoded
+        XCTAssertEqual(marks, [
+            JSONValueMark(valueRange: NSRange(location: 0, length: ns.length), kind: .size(8, isObject: true)),
+            JSONValueMark(valueRange: range("https://cdn.test/u/1"), kind: .image(.remote)),       // image-like key
+            JSONValueMark(valueRange: range("https://x.test/"), kind: .link(URL(string: "https://x.test/")!)),
+            JSONValueMark(valueRange: range("https://x.test/a.PNG"), kind: .image(.remote)),       // extension, in an array
+            JSONValueMark(valueRange: range("data:image/png;base64,AAAA"), kind: .image(.inline)),
+            JSONValueMark(valueRange: range(#"h\u0074tps://x.test/l"#), kind: .image(.remote)),
+            JSONValueMark(valueRange: range("https://x.test/t?s=1"), kind: .image(.remote)),
+            JSONValueMark(valueRange: range("https:\\/\\/x.test\\/e.jpg"), kind: .image(.remote)),  // escapes decoded
         ])
-        // Each is the member a caret inside it finds, with the same picture.
-        for image in images {
-            let m = JSONLocator.member(around: NSRange(location: image.valueRange.location + 1, length: 0), in: u)
-            XCTAssertEqual(m?.valueRange, image.valueRange)
-            XCTAssertEqual(m.map { JSONValueInsight($0, in: u).image }, image.source)
+        // Each is the member a caret inside it finds, with the same picture or link.
+        for mark in marks.dropFirst() {
+            let m = JSONLocator.member(around: NSRange(location: mark.valueRange.location + 1, length: 0), in: u)
+            XCTAssertEqual(m?.valueRange, mark.valueRange)
+            let insight = m.map { JSONValueInsight($0, in: u) }
+            switch mark.kind {
+            case .image(let source): XCTAssertEqual(insight?.image, source)
+            case .link(let url): XCTAssertEqual(insight?.link, url); XCTAssertNil(insight?.image)
+            default: XCTFail("unexpected \(mark.kind)")
+            }
         }
-        XCTAssertEqual(JSONLocator.imageValues(in: u, limit: 2).count, 2)
-        XCTAssertEqual(JSONLocator.imageValues(in: Array(#""https://x.test/a.png""#.utf16)), [])   // top level is not a member
+        XCTAssertEqual(JSONLocator.valueMarks(in: u, limit: 2).count, 2)
+        XCTAssertEqual(JSONLocator.valueMarks(in: Array(#""https://x.test/a.png""#.utf16)), [])   // top level is not a member
+    }
+
+    func testValueMarksIncludeColorsAndTimes() throws {
+        let doc = #"""
+        {"fg": "#FF8800", "bg": "rgb(0, 128, 255)", "tag": "#cafe1", "name": "red", "n": 42,
+         "created": 1700000000, "ms": "1700000000123", "id": 12345678901, "old": 123456789,
+         "flags": [true, null]}
+        """#
+        let u = Array(doc.utf16)
+        let ns = doc as NSString
+        func range(_ value: String) -> NSRange { ns.range(of: value) }
+        XCTAssertEqual(JSONLocator.valueMarks(in: u), [
+            JSONValueMark(valueRange: NSRange(location: 0, length: ns.length), kind: .size(10, isObject: true)),
+            JSONValueMark(valueRange: range(##""#FF8800""##), kind: .color(JSONColor(red: 1, green: 136.0 / 255, blue: 0, alpha: 1))),
+            JSONValueMark(valueRange: range(#""rgb(0, 128, 255)""#), kind: .color(JSONColor(red: 0, green: 128.0 / 255, blue: 1, alpha: 1))),
+            JSONValueMark(valueRange: NSRange(location: range("1700000000,").location, length: 10), kind: .date(Date(timeIntervalSince1970: 1_700_000_000), milliseconds: false)),
+            JSONValueMark(valueRange: range(#""1700000000123""#), kind: .date(Date(timeIntervalSince1970: 1_700_000_000.123), milliseconds: true)),
+        ])
+    }
+
+    func testValueMarksIncludeDecodesJWTsAndSizes() {
+        let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzY3MjI1NjAwfQ.c2ln"       // exp 1767225600
+        let bare = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2ln"                          // no exp
+        let doc = """
+        [
+          {"token": "\(jwt)", "plain": "\(bare)"},
+          {
+            "b": "aGVsbG8gd29ybGQgZnJvbSBqc29u", "q": "a%20b%2Fc", "words": "hello there, how are you",
+            "list": [
+              1,
+              2,
+              3
+            ],
+            "empty": {
+            }
+          }
+        ]
+        """
+        let u = Array(doc.utf16)
+        let ns = doc as NSString
+        func quoted(_ value: String) -> NSRange { ns.range(of: "\"" + value + "\"") }
+        let list = ns.range(of: "[\n      1")
+        let empty = ns.range(of: "{\n    }")
+        let second = ns.range(of: "{\n    \"b\"")
+        XCTAssertEqual(JSONLocator.valueMarks(in: u), [
+            JSONValueMark(valueRange: NSRange(location: 0, length: ns.length), kind: .size(2, isObject: false)),
+            JSONValueMark(valueRange: quoted(jwt), kind: .decode(jwtExpiry: Date(timeIntervalSince1970: 1_767_225_600))),
+            JSONValueMark(valueRange: quoted(bare), kind: .decode(jwtExpiry: nil)),
+            JSONValueMark(valueRange: NSRange(location: second.location, length: NSMaxRange(ns.range(of: "}\n  }")) - second.location),
+                          kind: .size(5, isObject: true)),
+            JSONValueMark(valueRange: quoted("aGVsbG8gd29ybGQgZnJvbSBqc29u"), kind: .decode(jwtExpiry: nil)),
+            JSONValueMark(valueRange: quoted("a%20b%2Fc"), kind: .decode(jwtExpiry: nil)),
+            JSONValueMark(valueRange: NSRange(location: list.location, length: NSMaxRange(ns.range(of: "3\n    ]")) - list.location),
+                          kind: .size(3, isObject: false)),
+            JSONValueMark(valueRange: NSRange(location: empty.location, length: empty.length), kind: .size(0, isObject: true)),
+        ])
     }
 
     func testUnitsCopyTheWholeString() {

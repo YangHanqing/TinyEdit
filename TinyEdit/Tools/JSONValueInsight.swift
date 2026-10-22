@@ -84,18 +84,68 @@ struct JSONValueInsight: Equatable, Sendable {
         color = Self.color(value)
         setDate(value)
         if color == nil, date == nil {
-            decodes = (PasteDecodeDetector.candidates(in: value) ?? []).map(\.kind).filter {
-                Self.decodeKinds.contains($0) && ($0 != .base64 || value.utf16.count >= Self.minimumBase64Length)
-            }
+            decodes = Self.decodes(of: value)
         }
     }
 
-    /// What `image` would be for this string, without the other checks.
-    static func imageSource(string value: String, key: String?) -> ImageSource? {
-        if isDataImage(value) { return .inline }
-        guard let url = webURL(value), looksLikeImage(url, key: key) else { return nil }
-        return .remote
+    /// The Decode readings of a string: the paste detector's, without its JSON-string and timestamp ones.
+    static func decodes(of value: String) -> [PasteDecodeKind] {
+        (PasteDecodeDetector.candidates(in: value) ?? []).map(\.kind).filter {
+            decodeKinds.contains($0) && ($0 != .base64 || value.utf16.count >= minimumBase64Length)
+        }
     }
+
+    /// What the editor marks after the value's line: a picture, else a link, a color, a Unix time or a
+    /// decode, as `image`, `link`, `color`, `date` and `decodes` would be. A number can only be a time.
+    /// `decodes` false skips the decode readings, the costly part, for strings that cannot have one.
+    static func markKind(_ value: String, isString: Bool, key: String?, decodes: Bool = true) -> JSONValueMark.Kind? {
+        var insight = JSONValueInsight()
+        if isString {
+            if isDataImage(value) { return .image(.inline) }
+            if let url = webURL(value) { return looksLikeImage(url, key: key) ? .image(.remote) : .link(url) }
+            if let color = color(value) { return .color(color) }
+        }
+        insight.setDate(value)
+        if let date = insight.date { return .date(date, milliseconds: insight.dateHasMilliseconds) }
+        guard isString, decodes else { return nil }
+        let kinds = Self.decodes(of: value)
+        guard !kinds.isEmpty else { return nil }
+        return .decode(jwtExpiry: kinds.contains(.jwt) ? jwtExpiry(value) : nil)
+    }
+
+    // MARK: JWT
+
+    /// The `exp` claim of a JWT's payload (optionally after `Bearer `). The signature is not verified.
+    static func jwtExpiry(_ token: String) -> Date? {
+        var t = Substring(token.trimmingCharacters(in: .whitespaces))
+        if t.lowercased().hasPrefix("bearer ") { t = t.dropFirst(7).drop { $0 == " " } }
+        let parts = t.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 2 || parts.count == 3 else { return nil }
+        var b64 = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        let rem = b64.utf8.count % 4
+        if rem > 0 { b64 += String(repeating: "=", count: 4 - rem) }
+        guard let data = Data(base64Encoded: b64),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = payload["exp"] as? NSNumber, !(exp === kCFBooleanTrue || exp === kCFBooleanFalse) else { return nil }
+        let seconds = exp.doubleValue
+        guard seconds.isFinite, seconds > 0, seconds < 32_503_680_000 else { return nil }   // before 3000
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    /// `exp 2026-01-01 08:00 · expired`, or `· in 3 days` before it, in the interface language.
+    static func expiryText(_ expiry: Date, now: Date = Date(), timeZone: TimeZone = .current,
+                           locale: Locale = interfaceLocale) -> (text: String, status: String, expired: Bool) {
+        let time = "exp " + dateText(expiry, milliseconds: false, timeZone: timeZone).prefix(16)
+        let expired = expiry <= now
+        guard !expired else { return (time, String(localized: "expired"), true) }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = locale
+        formatter.unitsStyle = .full
+        return (time, formatter.localizedString(for: expiry, relativeTo: now), false)
+    }
+
+    /// The language the interface is shown in, which can differ from the system's (Settings ▸ Language).
+    static var interfaceLocale: Locale { Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en") }
 
     private mutating func setDate(_ text: String) {
         guard text.count == 10 || text.count == 13, text.utf8.allSatisfy({ (0x30...0x39).contains($0) }),

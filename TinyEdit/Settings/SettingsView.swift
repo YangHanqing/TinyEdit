@@ -153,6 +153,23 @@ private struct EditorSettingsPane: View {
                 Text("Pasting a curl command shows the request it describes with a Send button. Nothing is sent until you click Send.")
                     .settingsFootnote()
             }
+            Section {
+                Group {
+                    Toggle("Picture preview icons", isOn: appState.setting(\.jsonMarkImages))
+                    Toggle("Link icons", isOn: appState.setting(\.jsonMarkLinks))
+                    Toggle("Color swatches", isOn: appState.setting(\.jsonMarkColors))
+                    Toggle("Local time of Unix timestamps", isOn: appState.setting(\.jsonMarkTimes))
+                    Toggle("JWT expiry", isOn: appState.setting(\.jsonMarkJWTExpiry))
+                    Toggle("Decode icons", isOn: appState.setting(\.jsonMarkDecodes))
+                    Toggle("Object and array sizes", isOn: appState.setting(\.jsonMarkSizes))
+                }
+                .toggleStyle(.checkbox)
+            } header: {
+                Text(verbatim: "JSON")
+            } footer: {
+                Text("Shown after the line in JSON tabs, one per line. Click an icon or a time to preview, open, decode or copy it.")
+                    .settingsFootnote()
+            }
         }
     }
 }

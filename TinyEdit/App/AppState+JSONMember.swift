@@ -45,8 +45,8 @@ struct PreviewImage: Equatable {
 }
 
 extension AppState {
-    /// Finds the member around the selection of a JSON tab, and after an edit the picture values the editor
-    /// marks with a Preview icon. Small documents are scanned on the spot; larger ones off the main thread
+    /// Finds the member around the selection of a JSON tab, and after an edit the values the editor marks
+    /// after their lines (pictures, links, colors, times). Small documents are scanned on the spot; larger ones off the main thread
     /// after a short pause, with the previous buttons left up meanwhile (the icons wait for the new scan).
     /// Written only when it changes. The buttons locate the member again when clicked, so a result
     /// that is a moment stale never decides what is copied.
@@ -60,37 +60,61 @@ extension AppState {
         let selection = store.viewState.selection
         let ns = store.textStorage.mutableString
         let generation = store.generation
-        let needsImages = store.jsonImages?.generation != generation
+        let needsMarks = store.jsonMarks?.generation != generation
         if store.length <= JSONLocator.synchronousLimit {
             let units = JSONLocator.units(of: ns)
             setJSONCaret(JSONLocator.member(around: selection, in: units).map { JSONCaretInfo($0, in: units) })
-            if needsImages { setJSONImages(JSONLocator.imageValues(in: units), generation: generation, store: store) }
+            if needsMarks { setJSONMarks(JSONLocator.valueMarks(in: units), generation: generation, store: store) }
             return
         }
         jsonCaretTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(120))
             guard let self, !Task.isCancelled, store.generation == generation else { return }
             let units = JSONLocator.units(of: ns)
-            let (info, images) = await Task.detached(priority: .userInitiated) {
+            let (info, marks) = await Task.detached(priority: .userInitiated) {
                 (JSONLocator.member(around: selection, in: units).map { JSONCaretInfo($0, in: units) },
-                 needsImages ? JSONLocator.imageValues(in: units) : nil)
+                 needsMarks ? JSONLocator.valueMarks(in: units) : nil)
             }.value
             guard !Task.isCancelled, store.generation == generation else { return }
             self.setJSONCaret(info)
-            if let images { self.setJSONImages(images, generation: generation, store: store) }
+            if let marks { self.setJSONMarks(marks, generation: generation, store: store) }
         }
     }
 
-    private func setJSONImages(_ values: [JSONImageValue], generation: UInt64, store: BufferTextStore) {
-        store.jsonImages = (values, generation)
+    private func setJSONMarks(_ values: [JSONValueMark], generation: UInt64, store: BufferTextStore) {
+        store.jsonMarks = (values, generation)
         if store.id == session.selectedBufferID { host.textView.setNeedsOverlays() }
     }
 
-    /// The selected JSON tab's picture values, while they were found for its current text.
-    var visibleJSONImages: [JSONImageValue] {
+    /// The selected JSON tab's marked values, while they were found for its current text.
+    var visibleJSONMarks: [JSONValueMark] {
         guard let store = activeStore, selectedBuffer?.language == .json,
-              let found = store.jsonImages, found.generation == store.generation else { return [] }
+              let found = store.jsonMarks, found.generation == store.generation else { return [] }
         return found.values
+    }
+
+    /// A click on a value's mark in the editor, looked up again in the current marks so a mark drawn for
+    /// older text does nothing: Preview for a picture, the system browser for a link, a copy for a time,
+    /// the decode card for a decode or a JWT.
+    func activateJSONMark(at valueRange: NSRange, pasteboard: NSPasteboard = .general) {
+        guard let mark = visibleJSONMarks.first(where: { $0.valueRange == valueRange }) else { return }
+        switch mark.kind {
+        case .image: previewJSONImage(at: valueRange)
+        case .link(let url): NSWorkspace.shared.open(url)
+        case .date(let date, let milliseconds): copyDate(date, milliseconds: milliseconds, to: pasteboard)
+        case .decode: if placeCaret(in: valueRange) { decodeJSONValue() }
+        case .color, .size: break
+        }
+    }
+
+    /// Puts the caret just inside the value and makes it the current member at once, so a card opened for
+    /// it stays while the caret is there. False when the member there is not that value.
+    private func placeCaret(in valueRange: NSRange) -> Bool {
+        guard let store = activeStore, NSMaxRange(valueRange) <= store.length else { return false }
+        host.textView.setSelectedRange(NSRange(location: valueRange.location + 1, length: 0))
+        guard let found = currentJSONMember(), found.member.valueRange == valueRange else { return false }
+        setJSONCaret(JSONCaretInfo(found.member, in: found.units))
+        return true
     }
 
     /// A value card stays only while the caret is on the member it was opened for.
@@ -176,7 +200,11 @@ extension AppState {
     /// Copies the Unix timestamp as the local date and time the status bar shows.
     func copyJSONDate(to pasteboard: NSPasteboard = .general) {
         guard let insight = currentJSONValue()?.insight, let date = insight.date else { return }
-        let text = JSONValueInsight.dateText(date, milliseconds: insight.dateHasMilliseconds)
+        copyDate(date, milliseconds: insight.dateHasMilliseconds, to: pasteboard)
+    }
+
+    private func copyDate(_ date: Date, milliseconds: Bool, to pasteboard: NSPasteboard) {
+        let text = JSONValueInsight.dateText(date, milliseconds: milliseconds)
         copy(text, to: pasteboard)
         showToast(String(localized: "Copied \(text)"))
     }
@@ -247,11 +275,7 @@ extension AppState {
 
     /// The editor's Preview icon: puts the caret in the value, so the card stays while it is there, and previews it.
     func previewJSONImage(at valueRange: NSRange) {
-        guard let store = activeStore, NSMaxRange(valueRange) <= store.length else { return }
-        host.textView.setSelectedRange(NSRange(location: valueRange.location + 1, length: 0))
-        guard let found = currentJSONMember(), found.member.valueRange == valueRange else { return }
-        setJSONCaret(JSONCaretInfo(found.member, in: found.units))
-        previewJSONImage()
+        if placeCaret(in: valueRange) { previewJSONImage() }
     }
 
     private func finishImage(_ id: UUID, path: String, _ result: Result<(Data, URL?, String), ImagePreviewFailure>) {

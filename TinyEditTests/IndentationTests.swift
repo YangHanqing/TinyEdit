@@ -62,6 +62,20 @@ final class IndentationTests: XCTestCase {
         XCTAssertTrue(EditorSettings.load(from: UserDefaults(suiteName: "IndentationTests.\(UUID())")!).detectIndentation)
     }
 
+    func testJSONMarkSettingsRoundTrip() throws {
+        let fresh = EditorSettings.load(from: try XCTUnwrap(UserDefaults(suiteName: "IndentationTests.\(UUID())")))
+        XCTAssertEqual(fresh.decorationOptions.jsonMarks, JSONMarkOptions())                    // all on
+        let d = try XCTUnwrap(UserDefaults(suiteName: "IndentationTests.\(UUID())"))
+        var s = EditorSettings()
+        s.jsonMarkJWTExpiry = false
+        s.jsonMarkSizes = false
+        s.save(to: d)
+        var expected = JSONMarkOptions()
+        expected.jwtExpiry = false
+        expected.sizes = false
+        XCTAssertEqual(EditorSettings.load(from: d).decorationOptions.jsonMarks, expected)
+    }
+
     // MARK: Pure edits
 
     func testNewlineKeepsIndent() {

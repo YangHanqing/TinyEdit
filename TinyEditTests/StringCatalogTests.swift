@@ -39,12 +39,24 @@ final class StringCatalogTests: XCTestCase {
             let expected = specifiers(english)
             for lang in languages {
                 let loc = try XCTUnwrap(locs[lang] as? [String: Any], "\(lang) missing for \(key)")
-                let unit = try XCTUnwrap(loc["stringUnit"] as? [String: Any], "\(lang) \(key)")
-                XCTAssertEqual(unit["state"] as? String, "translated", "\(lang) \(key)")
-                let value = try XCTUnwrap(unit["value"] as? String, "\(lang) \(key)")
-                XCTAssertEqual(specifiers(value), expected, "\(lang) placeholders for \(key)")
+                for unit in try stringUnits(loc, "\(lang) \(key)") {
+                    XCTAssertEqual(unit["state"] as? String, "translated", "\(lang) \(key)")
+                    let value = try XCTUnwrap(unit["value"] as? String, "\(lang) \(key)")
+                    XCTAssertEqual(specifiers(value), expected, "\(lang) placeholders for \(key)")
+                }
             }
         }
         XCTAssertGreaterThan(translated, 50)
+    }
+
+    /// A plain translation, or every form of a plural one (which must have `other`).
+    private func stringUnits(_ loc: [String: Any], _ label: String) throws -> [[String: Any]] {
+        if let unit = loc["stringUnit"] as? [String: Any] { return [unit] }
+        let variations = try XCTUnwrap(loc["variations"] as? [String: Any], label)
+        let forms = try XCTUnwrap(variations["plural"] as? [String: Any], label)
+        XCTAssertNotNil(forms["other"], "\(label) has no other form")
+        return try forms.values.map { form in
+            try XCTUnwrap((form as? [String: Any])?["stringUnit"] as? [String: Any], label)
+        }
     }
 }

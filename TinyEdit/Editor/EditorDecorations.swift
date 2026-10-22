@@ -5,6 +5,32 @@ struct EditorDecorationOptions: Equatable {
     var currentLine = true
     var indentGuides = true
     var invisibles = false
+    var jsonMarks = JSONMarkOptions()
+}
+
+/// Which JSON value marks are drawn (Settings ▸ Editor ▸ JSON). All on by default.
+struct JSONMarkOptions: Equatable {
+    var images = true
+    var links = true
+    var colors = true
+    var times = true
+    /// A JWT's expiry; with this off, a JWT gets the decode icon when `decodes` is on.
+    var jwtExpiry = true
+    var decodes = true
+    var sizes = true
+
+    /// The mark as drawn under these options: a JWT's expiry dropped when it is off, nil when hidden.
+    func shown(_ kind: JSONValueMark.Kind) -> JSONValueMark.Kind? {
+        switch kind {
+        case .image: images ? kind : nil
+        case .link: links ? kind : nil
+        case .color: colors ? kind : nil
+        case .date: times ? kind : nil
+        case .size: sizes ? kind : nil
+        case .decode(let expiry?) where jwtExpiry: .decode(jwtExpiry: expiry)
+        case .decode: decodes ? .decode(jwtExpiry: nil) : nil
+        }
+    }
 }
 
 /// What the clip view paints beneath the text for the visible rect, in text-view coordinates. The clip
@@ -17,12 +43,34 @@ struct EditorDecorations: Equatable {
         var maxY: CGFloat
     }
 
-    /// A Preview icon after a line of a JSON tab that holds a picture value. Clicking it previews that value.
-    struct ImageMark: Equatable {
-        /// The icon's hit and hover area.
+    /// A mark after a line of a JSON tab for a value on it: a Preview icon for a picture, an open icon for
+    /// a link, a swatch for a color, the local time for a Unix timestamp, a decode icon (with the expiry for
+    /// a JWT that has one), the size of an object or array. All but the swatch and the size take a click.
+    struct ValueMark: Equatable {
+        enum Kind: Equatable {
+            case image, link, decode
+            case color(JSONColor)
+            case time(String)
+            /// `exp 2026-01-01 08:00` and `expired` or `in 3 days`; both empty when only the symbol fits.
+            case jwt(String, status: String, expired: Bool)
+            case size(String)
+        }
+
+        /// The mark's drawing, hit and hover area.
         var rect: NSRect
         var valueRange: NSRange
+        var kind: Kind
         var hovered = false
+
+        /// `exp 2026-01-01 08:00 · in 3 days`.
+        static func jwtLabel(_ text: String, _ status: String) -> String { text + " · " + status }
+
+        var isClickable: Bool {
+            switch kind {
+            case .color, .size: false
+            default: true
+            }
+        }
     }
 
     /// The caret's line, painted across the whole width. Only with an empty selection.
@@ -32,7 +80,9 @@ struct EditorDecorations: Equatable {
     /// Other occurrences of the selected text on screen.
     var occurrences: [NSRect] = []
     var guides: [Guide] = []
-    var imageMarks: [ImageMark] = []
+    var valueMarks: [ValueMark] = []
+    /// The font of the time marks' text.
+    var markFont: NSFont?
 
     /// Selected text shorter than this, on one line, has its other occurrences marked.
     static let occurrenceMaxLength = 200
@@ -94,30 +144,37 @@ extension EditorTextView {
             result.guides = indentGuides(text: text, fragments: fragments, origin: origin, font: drawingFont)
         }
 
-        if let images = jsonImageValues?(), !images.isEmpty, !fragments.isEmpty {
-            result.imageMarks = imageMarks(images, text: text, fragments: fragments, origin: origin,
-                                           font: drawingFont, caret: sel.location)
+        if let values = jsonValueMarks?(), !values.isEmpty, !fragments.isEmpty {
+            let markFont = NSFont(descriptor: drawingFont.fontDescriptor, size: max(drawingFont.pointSize - 1, 8)) ?? drawingFont
+            result.valueMarks = valueMarks(values, options: decorationOptions.jsonMarks, text: text, fragments: fragments,
+                                           origin: origin, font: drawingFont, markFont: markFont, caret: sel.location)
+            result.markFont = result.valueMarks.isEmpty ? nil : markFont
         }
         return result
     }
 
-    /// One icon per visible paragraph that holds a picture value, after its last character: for the value
-    /// at the caret when it is on that paragraph, else for the first. Not drawn when it would not fit.
-    private func imageMarks(_ images: [JSONImageValue], text: NSString, fragments: [(start: Int, fragment: NSTextLayoutFragment)],
-                            origin: NSPoint, font: NSFont, caret: Int) -> [EditorDecorations.ImageMark] {
+    /// One mark per visible paragraph that holds a value the options show, after its last character: for the
+    /// innermost value holding the caret when it starts on that paragraph, else for the first. Not drawn when
+    /// it would not fit.
+    private func valueMarks(_ values: [JSONValueMark], options: JSONMarkOptions, text: NSString,
+                            fragments: [(start: Int, fragment: NSTextLayoutFragment)],
+                            origin: NSPoint, font: NSFont, markFont: NSFont, caret: Int) -> [EditorDecorations.ValueMark] {
         let space = (" " as NSString).size(withAttributes: [.font: font]).width
         let mouse = window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) }
-        var next = images.partitioningIndex { $0.valueRange.location >= fragments[0].start }
-        var marks: [EditorDecorations.ImageMark] = []
+        var next = values.partitioningIndex { $0.valueRange.location >= fragments[0].start }
+        var marks: [EditorDecorations.ValueMark] = []
         for (start, fragment) in fragments {
             let end = start + fragment.rangeInElement.length(in: textContentStorage)
-            var here: [JSONImageValue] = []
-            while next < images.count, images[next].valueRange.location < end {
-                if images[next].valueRange.location >= start { here.append(images[next]) }
+            var here: [JSONValueMark] = []
+            while next < values.count, values[next].valueRange.location < end {
+                if values[next].valueRange.location >= start, let kind = options.shown(values[next].kind) {
+                    here.append(JSONValueMark(valueRange: values[next].valueRange, kind: kind))
+                }
                 next += 1
             }
             guard let first = here.first else { continue }
-            let image = here.first { $0.valueRange.location <= caret && caret <= NSMaxRange($0.valueRange) } ?? first
+            let value = here.filter { $0.valueRange.location <= caret && caret <= NSMaxRange($0.valueRange) }
+                .min { $0.valueRange.length < $1.valueRange.length } ?? first
             var contentEnd = end
             if contentEnd > start, text.character(at: contentEnd - 1) == 0x0A { contentEnd -= 1 }
             let offset = contentEnd - start
@@ -128,12 +185,45 @@ extension EditorTextView {
             let bounds = line.typographicBounds
             let x = origin.x + frame.minX + bounds.minX + line.locationForCharacter(at: offset).x
             let side = ceil(min(bounds.height, font.pointSize * 1.3))
-            let rect = NSRect(x: (x + max(space, 6)).rounded(), y: (origin.y + frame.minY + bounds.minY + (bounds.height - side) / 2).rounded(),
-                              width: side + 6, height: side)
+            var kind: EditorDecorations.ValueMark.Kind
+            var width: CGFloat
+            switch value.kind {
+            case .image:
+                (kind, width) = (.image, side + 6)
+            case .link:
+                (kind, width) = (.link, side + 6)
+            case .color(let color):
+                (kind, width) = (.color(color), side)
+            case .date(let date, let milliseconds):
+                let label = JSONValueInsight.dateText(date, milliseconds: milliseconds)
+                (kind, width) = (.time(label), labelWidth(label, markFont) + 8)
+            case .decode(nil):
+                (kind, width) = (.decode, side + 6)
+            case .decode(let expiry?):
+                let e = JSONValueInsight.expiryText(expiry)
+                (kind, width) = (.jwt(e.text, status: e.status, expired: e.expired),
+                                 side + 4 + labelWidth(EditorDecorations.ValueMark.jwtLabel(e.text, e.status), markFont) + 8)
+            case .size(let count, let isObject):
+                let label = isObject ? String(localized: "\(count) keys") : String(localized: "\(count) items")
+                (kind, width) = (.size(label), labelWidth(label, markFont) + 8)
+            }
+            var rect = NSRect(x: (x + max(space, 6)).rounded(), y: (origin.y + frame.minY + bounds.minY + (bounds.height - side) / 2).rounded(),
+                              width: width, height: side)
+            // A JWT's expiry that does not fit leaves its symbol, which still opens the decode card.
+            if rect.maxX > self.bounds.width - 2, case .jwt(_, _, let expired) = kind {
+                (kind, width) = (.jwt("", status: "", expired: expired), side + 6)
+                rect.size.width = width
+            }
             guard rect.maxX <= self.bounds.width - 2 else { continue }
-            marks.append(.init(rect: rect, valueRange: image.valueRange, hovered: mouse.map(rect.contains) ?? false))
+            let mark = EditorDecorations.ValueMark(rect: rect, valueRange: value.valueRange, kind: kind)
+            marks.append(mark)
+            marks[marks.count - 1].hovered = mark.isClickable && (mouse.map(rect.contains) ?? false)
         }
         return marks
+    }
+
+    private func labelWidth(_ label: String, _ font: NSFont) -> CGFloat {
+        ceil((label as NSString).size(withAttributes: [.font: font]).width)
     }
 
     // MARK: Parts
@@ -279,8 +369,8 @@ enum EditorDecorationDrawing {
             Theme.occurrenceHighlight.setFill()
             NSBezierPath(roundedRect: r, xRadius: 2, yRadius: 2).fill()
         }
-        for mark in d.imageMarks where mark.rect.intersects(dirtyRect) {
-            drawImageMark(mark)
+        for mark in d.valueMarks where mark.rect.intersects(dirtyRect) {
+            drawValueMark(mark, font: d.markFont)
         }
         for r in d.brackets where r.intersects(dirtyRect) {
             let box = r.insetBy(dx: 0.5, dy: 0.5)
@@ -293,20 +383,68 @@ enum EditorDecorationDrawing {
         }
     }
 
-    /// A photo symbol in the accent color, on a chip while the pointer is over it.
-    private static func drawImageMark(_ mark: EditorDecorations.ImageMark) {
+    /// An accent symbol for a picture, a link or a decode, a swatch for a color, a time or a size in faint
+    /// text, a JWT's symbol and expiry (the status in the warning color once expired); the clickable ones on
+    /// a chip while the pointer is over them.
+    private static func drawValueMark(_ mark: EditorDecorations.ValueMark, font: NSFont?) {
         if mark.hovered {
             Theme.occurrenceHighlight.setFill()
             NSBezierPath(roundedRect: mark.rect, xRadius: 4, yRadius: 4).fill()
         }
+        switch mark.kind {
+        case .image:
+            drawSymbol("photo", in: mark.rect)
+        case .link:
+            drawSymbol("arrow.up.right.square", in: mark.rect)
+        case .decode:
+            drawSymbol("wand.and.stars", in: mark.rect)
+        case .color(let c):
+            let side = (mark.rect.height * 0.72).rounded()
+            let box = NSRect(x: (mark.rect.midX - side / 2).rounded(), y: (mark.rect.midY - side / 2).rounded(),
+                             width: side, height: side).insetBy(dx: 0.5, dy: 0.5)
+            NSColor(srgbRed: c.red, green: c.green, blue: c.blue, alpha: c.alpha).setFill()
+            NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3).fill()
+            Theme.separator.setStroke()
+            let outline = NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3)
+            outline.lineWidth = 1
+            outline.stroke()
+        case .time(let label), .size(let label):
+            guard let font else { return }
+            drawLabel(NSAttributedString(string: label, attributes: labelAttributes(font, hovered: mark.hovered)),
+                      at: mark.rect.minX + 4, in: mark.rect)
+        case .jwt(let text, _, _) where text.isEmpty:
+            drawSymbol("key", in: mark.rect)
+        case .jwt(let text, let status, let expired):
+            guard let font else { return }
+            let side = mark.rect.height
+            drawSymbol("key", in: NSRect(x: mark.rect.minX, y: mark.rect.minY, width: side + 4, height: side))
+            let attributes = labelAttributes(font, hovered: mark.hovered)
+            let label = NSMutableAttributedString(string: text + " · ", attributes: attributes)
+            var statusAttributes = attributes
+            if expired { statusAttributes[.foregroundColor] = Theme.warning }
+            label.append(NSAttributedString(string: status, attributes: statusAttributes))
+            drawLabel(label, at: mark.rect.minX + side + 4, in: mark.rect)
+        }
+    }
+
+    private static func labelAttributes(_ font: NSFont, hovered: Bool) -> [NSAttributedString.Key: Any] {
+        [.font: font, .foregroundColor: hovered ? Theme.textSecondary : Theme.textTertiary]
+    }
+
+    private static func drawLabel(_ label: NSAttributedString, at x: CGFloat, in rect: NSRect) {
+        let height = label.size().height
+        label.draw(at: NSPoint(x: x, y: (rect.midY - height / 2).rounded()))
+    }
+
+    private static func drawSymbol(_ name: String, in rect: NSRect) {
         // Resolved here, in the view's appearance: the symbol's palette does not follow a dynamic color.
         let color = Theme.accent.usingColorSpace(.sRGB) ?? Theme.accent
-        let config = NSImage.SymbolConfiguration(pointSize: (mark.rect.height * 0.72).rounded(), weight: .medium)
+        let config = NSImage.SymbolConfiguration(pointSize: (rect.height * 0.72).rounded(), weight: .medium)
             .applying(.init(paletteColors: [color]))
-        guard let symbol = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         else { return }
         let size = symbol.size
-        let r = NSRect(x: (mark.rect.midX - size.width / 2).rounded(), y: (mark.rect.midY - size.height / 2).rounded(),
+        let r = NSRect(x: (rect.midX - size.width / 2).rounded(), y: (rect.midY - size.height / 2).rounded(),
                        width: size.width, height: size.height)
         symbol.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }

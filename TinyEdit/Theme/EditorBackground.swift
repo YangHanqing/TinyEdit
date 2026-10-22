@@ -89,7 +89,7 @@ final class EditorBackgroundClipView: NSClipView {
         result.currentLine = decorations.currentLine.map { convert($0, from: documentView) }
         result.occurrences = decorations.occurrences.map { convert($0, from: documentView) }
         result.brackets = decorations.brackets.map { convert($0, from: documentView) }
-        result.imageMarks = decorations.imageMarks.map { mark in
+        result.valueMarks = decorations.valueMarks.map { mark in
             var m = mark
             m.rect = convert(mark.rect, from: documentView)
             return m

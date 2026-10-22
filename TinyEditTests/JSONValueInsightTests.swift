@@ -13,6 +13,53 @@ final class JSONValueInsightTests: XCTestCase {
         return JSONValueInsight(member, in: units)
     }
 
+    // MARK: JWT expiry
+
+    func testJWTExpiry() {
+        let header = "eyJhbGciOiJIUzI1NiJ9"
+        XCTAssertEqual(JSONValueInsight.jwtExpiry(header + ".eyJzdWIiOiIxIiwiZXhwIjoxNzY3MjI1NjAwfQ.c2ln"),
+                       Date(timeIntervalSince1970: 1_767_225_600))
+        XCTAssertEqual(JSONValueInsight.jwtExpiry("Bearer " + header + ".eyJzdWIiOiIxIiwiZXhwIjoxNzY3MjI1NjAwfQ"),
+                       Date(timeIntervalSince1970: 1_767_225_600))
+        XCTAssertNil(JSONValueInsight.jwtExpiry(header + ".eyJzdWIiOiIxMjMifQ.c2ln"))          // no exp
+        XCTAssertNil(JSONValueInsight.jwtExpiry(header + ".eyJleHAiOiJzb29uIn0.c2ln"))         // {"exp":"soon"}
+        XCTAssertNil(JSONValueInsight.jwtExpiry(header + ".eyJleHAiOnRydWV9.c2ln"))            // {"exp":true}
+        XCTAssertNil(JSONValueInsight.jwtExpiry("not.a.jwt"))
+    }
+
+    func testExpiryText() {
+        let utc = TimeZone(identifier: "UTC")!
+        let expiry = Date(timeIntervalSince1970: 1_767_225_600)
+        let en = Locale(identifier: "en")
+        let past = JSONValueInsight.expiryText(expiry, now: expiry.addingTimeInterval(60), timeZone: utc, locale: en)
+        XCTAssertEqual(past.text, "exp 2026-01-01 00:00")
+        XCTAssertTrue(past.expired)
+        let future = JSONValueInsight.expiryText(expiry, now: expiry.addingTimeInterval(-3 * 86_400), timeZone: utc, locale: en)
+        XCTAssertEqual(future.status, "in 3 days")
+        XCTAssertFalse(future.expired)
+        let zh = JSONValueInsight.expiryText(expiry, now: expiry.addingTimeInterval(-3 * 86_400), timeZone: utc,
+                                             locale: Locale(identifier: "zh-Hans"))
+        XCTAssertEqual(zh.status, "3天后")
+    }
+
+    func testMarkOptionsHideOrReduceKinds() {
+        let expiry = Date(timeIntervalSince1970: 1_767_225_600)
+        var options = JSONMarkOptions()
+        XCTAssertEqual(options.shown(.decode(jwtExpiry: expiry)), .decode(jwtExpiry: expiry))
+        options.jwtExpiry = false
+        XCTAssertEqual(options.shown(.decode(jwtExpiry: expiry)), .decode(jwtExpiry: nil))      // falls back to the icon
+        options.decodes = false
+        XCTAssertNil(options.shown(.decode(jwtExpiry: expiry)))
+        options.jwtExpiry = true
+        XCTAssertEqual(options.shown(.decode(jwtExpiry: expiry)), .decode(jwtExpiry: expiry))
+        XCTAssertNil(options.shown(.decode(jwtExpiry: nil)))
+        options.sizes = false
+        XCTAssertNil(options.shown(.size(3, isObject: false)))
+        options.links = false
+        XCTAssertNil(options.shown(.link(URL(string: "https://x.test")!)))
+        XCTAssertEqual(options.shown(.image(.remote)), .image(.remote))
+    }
+
     // MARK: Links
 
     func testLinks() throws {

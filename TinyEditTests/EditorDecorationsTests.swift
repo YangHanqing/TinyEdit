@@ -115,12 +115,12 @@ final class EditorDecorationsTests: XCTestCase {
         let store = BufferTextStore(id: UUID(), text: source, settings: settings)
         window.contentView = NSHostingView(rootView: EditorView(host: host, store: store, allStores: [store], settings: settings))
         host.activate(store, settings: settings)
-        let images = JSONLocator.imageValues(in: Array(source.utf16))
+        let images = JSONLocator.valueMarks(in: Array(source.utf16)).filter(\.isImage)
         XCTAssertEqual(images.count, 3)
-        host.textView.jsonImageValues = { images }
+        host.textView.jsonValueMarks = { images }
         settle(window)
         host.textView.updateOverlays()
-        var marks = host.textView.currentDecorations.imageMarks
+        var marks = host.textView.currentDecorations.valueMarks
         XCTAssertEqual(marks.map(\.valueRange), [images[0].valueRange, images[1].valueRange])   // one per line, the first
         let ns = source as NSString
         for mark in marks {
@@ -129,17 +129,61 @@ final class EditorDecorationsTests: XCTestCase {
             XCTAssertGreaterThan(mark.rect.minX, end.maxX)                                        // after the comma
             XCTAssertLessThan(mark.rect.minX - end.maxX, 16)
             XCTAssertTrue(mark.rect.intersects(NSRect(x: 0, y: end.minY, width: 1e4, height: end.height)))
-            XCTAssertEqual(host.textView.imageMark(at: NSPoint(x: mark.rect.midX, y: mark.rect.midY))?.valueRange,
+            XCTAssertEqual(mark.kind, .image)
+            XCTAssertEqual(host.textView.valueMark(at: NSPoint(x: mark.rect.midX, y: mark.rect.midY))?.valueRange,
                            mark.valueRange)
         }
 
         host.textView.setSelectedRange(NSRange(location: images[2].valueRange.location + 3, length: 0))
         host.textView.updateOverlays()
-        marks = host.textView.currentDecorations.imageMarks
+        marks = host.textView.currentDecorations.valueMarks
         XCTAssertEqual(marks.last?.valueRange, images[2].valueRange)                               // the caret's value
-        host.textView.jsonImageValues = { [] }
+        host.textView.jsonValueMarks = { [] }
         host.textView.updateOverlays()
-        XCTAssertEqual(host.textView.currentDecorations.imageMarks, [])
+        XCTAssertEqual(host.textView.currentDecorations.valueMarks, [])
+    }
+
+    func testJSONLinkColorAndTimeMarks() throws {
+        let settings = EditorSettings()
+        let host = EditorTextHost()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 230),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        defer { window.orderOut(nil) }
+        let source = """
+        {
+          "home": "https://x.test/",
+          "fg": "#ff8800",
+          "created": 1700000000
+        }
+        """
+        let store = BufferTextStore(id: UUID(), text: source, settings: settings)
+        window.contentView = NSHostingView(rootView: EditorView(host: host, store: store, allStores: [store], settings: settings))
+        host.activate(store, settings: settings)
+        let values = JSONLocator.valueMarks(in: Array(source.utf16))
+        host.textView.jsonValueMarks = { values }
+        settle(window)
+        host.textView.updateOverlays()
+        let decorations = host.textView.currentDecorations
+        guard case .size = decorations.valueMarks.first?.kind else { return XCTFail("no size on the first line") }
+        XCTAssertNil(host.textView.valueMark(at: NSPoint(x: decorations.valueMarks[0].rect.midX,
+                                                         y: decorations.valueMarks[0].rect.midY)))   // a size takes no click
+        let marks = Array(decorations.valueMarks.dropFirst())
+        let time = JSONValueInsight.dateText(Date(timeIntervalSince1970: 1_700_000_000), milliseconds: false)
+        XCTAssertEqual(marks.map(\.kind), [.link, .color(JSONColor(red: 1, green: 136.0 / 255, blue: 0, alpha: 1)), .time(time)])
+        let font = try XCTUnwrap(decorations.markFont)
+        XCTAssertGreaterThanOrEqual(marks[2].rect.width, (time as NSString).size(withAttributes: [.font: font]).width)
+        // The swatch only shows the color; the link and the time take clicks.
+        XCTAssertEqual(host.textView.valueMark(at: NSPoint(x: marks[0].rect.midX, y: marks[0].rect.midY))?.valueRange,
+                       marks[0].valueRange)
+        XCTAssertNil(host.textView.valueMark(at: NSPoint(x: marks[1].rect.midX, y: marks[1].rect.midY)))
+        XCTAssertEqual(host.textView.valueMark(at: NSPoint(x: marks[2].rect.midX, y: marks[2].rect.midY))?.valueRange,
+                       marks[2].valueRange)
+
+        // Settings hide marks without a new scan.
+        host.textView.decorationOptions.jsonMarks.links = false
+        host.textView.decorationOptions.jsonMarks.sizes = false
+        host.textView.updateOverlays()
+        XCTAssertEqual(host.textView.currentDecorations.valueMarks.map(\.valueRange), [marks[1].valueRange, marks[2].valueRange])
     }
 
     private func settle(_ window: NSWindow) {

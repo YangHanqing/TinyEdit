@@ -130,8 +130,8 @@ final class AppState {
         }
         host.textView.indentStyle = { [weak self] in self?.activeIndentStyle ?? EditorSettings().preferredIndent }
         host.textView.taskLanguage = { [weak self] in self?.selectedBuffer?.language ?? .plain }
-        host.textView.jsonImageValues = { [weak self] in self?.visibleJSONImages ?? [] }
-        host.textView.onJSONImageClick = { [weak self] in self?.previewJSONImage(at: $0) }
+        host.textView.jsonValueMarks = { [weak self] in self?.visibleJSONMarks ?? [] }
+        host.textView.onJSONMarkClick = { [weak self] in self?.activateJSONMark(at: $0) }
         host.textView.onPasteBegin = { [weak self] in self?.beginPasteRecognition() }
         host.textView.onPasteEnd = { [weak self] in self?.endPasteRecognition() }
         host.textView.onPasteboard = { [weak self] in self?.handlePasteboard($0) ?? false }

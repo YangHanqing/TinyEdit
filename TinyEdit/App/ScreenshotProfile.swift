@@ -157,6 +157,7 @@ enum ScreenshotProfile {
                     "website": "https://example.com/docs?lang=en&theme=dark",
                     "preview": "http://localhost:18473/preview.png",
                     "theme": "#6BD1C6",
+                    "updated": 1767225600,
                     "items": [
                       { "name": "Notes", "ready": true },
                       { "name": "Snippets", "ready": true }
@@ -188,7 +189,7 @@ enum ScreenshotProfile {
                 state.host.textView.setSelectedRange(NSRange(location: range.location + 1, length: 0))
                 state.host.captureViewState()
                 state.refreshJSONCaret()
-                if scene == "json-image", let image = state.visibleJSONImages.first {
+                if scene == "json-image", let image = state.visibleJSONMarks.first(where: \.isImage) {
                     state.previewJSONImage(at: image.valueRange)   // as a click on the line's picture icon
                 }
             }

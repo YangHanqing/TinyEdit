@@ -65,10 +65,28 @@ struct JSONMember: Equatable, Sendable {
     }
 }
 
-/// A member value Preview would show: a picture link or a `data:image/` URI. For the editor's inline icons.
-struct JSONImageValue: Equatable, Sendable {
+/// A member value the editor marks after its line: a picture Preview would show, a link to open, a color
+/// to see or a Unix time to read.
+struct JSONValueMark: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case image(JSONValueInsight.ImageSource)
+        case link(URL)
+        case color(JSONColor)
+        case date(Date, milliseconds: Bool)
+        /// A JWT, Base64, `%XX` or `\uXXXX` string that Decode reads, with a JWT's `exp` when it has one.
+        case decode(jwtExpiry: Date?)
+        /// An object or array that spans lines, with how many members or elements it holds. Also the
+        /// top-level value, which is not a member.
+        case size(Int, isObject: Bool)
+    }
+
     var valueRange: NSRange
-    var source: JSONValueInsight.ImageSource
+    var kind: Kind
+
+    var isImage: Bool {
+        if case .image = kind { return true }
+        return false
+    }
 }
 
 /// Finds the JSON member around the caret. A tolerant single pass: it never requires the document to
@@ -87,12 +105,13 @@ enum JSONLocator {
         return scanner.run()
     }
 
-    /// Every member value that Preview would show, in document order, up to `limit`. The same tolerant
-    /// pass as `member(around:)`, so each one is the member a caret inside it finds.
-    static func imageValues(in u: [UInt16], limit: Int = 2_000) -> [JSONImageValue] {
-        var scanner = Scanner(u: u, target: nil, imageLimit: limit)
+    /// Every value the editor marks, in document order, up to `limit`. The same tolerant pass as
+    /// `member(around:)`, so each one but a top-level size is the member a caret inside it finds.
+    static func valueMarks(in u: [UInt16], limit: Int = 2_000) -> [JSONValueMark] {
+        var scanner = Scanner(u: u, target: nil, markLimit: limit)
         _ = scanner.run()
-        return scanner.images
+        // Containers are marked when they close, after what they hold.
+        return scanner.marks.sorted { $0.valueRange.location < $1.valueRange.location }
     }
 
     /// The value as it is useful on its own: a string decoded, an object or array as written but
@@ -206,20 +225,26 @@ enum JSONLocator {
         var key: (range: NSRange, quoted: Bool)?
         var afterColon = false
         var index = 0
+        /// Members or elements completed so far; counted only when collecting marks.
+        var count = 0
+        /// `Scanner.newlines` when the container opened.
+        var newlinesBefore = 0
     }
 
     private struct Scanner {
         let u: [UInt16]
-        /// Nil collects `images` over the whole text instead of finding one member.
+        /// Nil collects `marks` over the whole text instead of finding one member.
         let target: NSRange?
         var frames: [Frame] = []
-        let imageLimit: Int
-        var images: [JSONImageValue] = []
+        let markLimit: Int
+        var marks: [JSONValueMark] = []
+        /// Line breaks passed, to tell a container that spans lines.
+        var newlines = 0
 
-        init(u: [UInt16], target: NSRange?, imageLimit: Int = 0) {
+        init(u: [UInt16], target: NSRange?, markLimit: Int = 0) {
             self.u = u
             self.target = target
-            self.imageLimit = imageLimit
+            self.markLimit = markLimit
         }
 
         mutating func run() -> JSONMember? {
@@ -229,14 +254,16 @@ enum JSONLocator {
                 let c = u[i]
                 switch c {
                 case 0x20, 0x09, 0x0A, 0x0D:
+                    if c == 0x0A { newlines += 1 }
                     i += 1
                 case 0x7B, 0x5B:   // { [
-                    frames.append(Frame(isObject: c == 0x7B, start: i))
+                    frames.append(Frame(isObject: c == 0x7B, start: i, newlinesBefore: newlines))
                     i += 1
                 case 0x7D, 0x5D:   // } ]
                     i += 1
                     guard let f = frames.popLast() else { continue }
                     let r = NSRange(location: f.start, length: i - f.start)
+                    markSize(f, r)
                     if let m = complete(r, f.isObject ? .object : .array) { return m }
                 case 0x3A:   // :
                     if frames.last?.isObject == true { frames[frames.count - 1].afterColon = true }
@@ -275,11 +302,18 @@ enum JSONLocator {
             }
             // Unclosed containers end at the end of the text.
             while let f = frames.popLast() {
+                markSize(f, NSRange(location: f.start, length: n - f.start))
                 if let m = complete(NSRange(location: f.start, length: n - f.start), f.isObject ? .object : .array) {
                     return m
                 }
             }
             return nil
+        }
+
+        /// A closed container that spans lines, when collecting marks.
+        private mutating func markSize(_ f: Frame, _ r: NSRange) {
+            guard target == nil, newlines > f.newlinesBefore, marks.count < markLimit else { return }
+            marks.append(JSONValueMark(valueRange: r, kind: .size(f.count, isObject: f.isObject)))
         }
 
         private var expectsKey: Bool {
@@ -317,8 +351,9 @@ enum JSONLocator {
             let keyRange = frame.isObject ? frame.key?.range : nil
             guard !frame.isObject || keyRange != nil else { return nil }
             guard let target else {
-                if kind == .string, images.count < imageLimit, let source = imageSource(value, in: frame) {
-                    images.append(JSONImageValue(valueRange: value, source: source))
+                frames[last].count += 1
+                if marks.count < markLimit, let mark = markKind(value, kind, in: frame) {
+                    marks.append(JSONValueMark(valueRange: value, kind: mark))
                 }
                 return nil
             }
@@ -334,20 +369,48 @@ enum JSONLocator {
             return JSONMember(path: path, keyRange: keyRange, valueRange: value, kind: kind)
         }
 
-        /// What `JSONValueInsight.image` would be for this string value. Only strings that start like a
-        /// link or a `data:` URI are decoded.
-        private func imageSource(_ value: NSRange, in frame: Frame) -> JSONValueInsight.ImageSource? {
-            let i = value.location + 1
-            guard value.length >= 12, u[i] | 0x20 == 0x68 || u[i] | 0x20 == 0x64 else { return nil }   // h d
-            if value.length > JSONValueInsight.detailLimit + 2 {
-                let head = String(decoding: u[i..<(i + 16)], as: UTF16.self)
-                return JSONValueInsight.isDataImage(head) ? .inline : nil
+        /// `JSONValueInsight.markKind` for this value. Numbers are read only at timestamp lengths. Strings are
+        /// decoded when they start like a link, a `data:` URI, a color or a timestamp, or might have a Decode
+        /// reading (16+ units with no space, or a `%` or `\`); only the latter are given the decode checks.
+        private func markKind(_ value: NSRange, _ kind: JSONMember.Kind, in frame: Frame) -> JSONValueMark.Kind? {
+            switch kind {
+            case .object, .array:
+                return nil
+            case .scalar:
+                guard value.length == 10 || value.length == 13 else { return nil }
+                return JSONValueInsight.markKind(String(decoding: u[value.location..<NSMaxRange(value)], as: UTF16.self),
+                                                 isString: false, key: nil)
+            case .string:
+                let i = value.location + 1
+                guard value.length >= 5 else { return nil }
+                let mayDecode = mightDecode(value)
+                switch u[i] | 0x20 {
+                case 0x68, 0x64, 0x72, 0x23, 0x30...0x39: break   // h d r # digits
+                default: if !mayDecode { return nil }
+                }
+                if value.length > JSONValueInsight.detailLimit + 2 {
+                    let head = String(decoding: u[i..<(i + 16)], as: UTF16.self)
+                    return JSONValueInsight.isDataImage(head) ? .image(.inline) : nil
+                }
+                let text = JSONLocator.decodeString(u, value)
+                    ?? String(decoding: u[value.location..<NSMaxRange(value)], as: UTF16.self)
+                var key: String?
+                if case .key(let k) = step(in: frame) { key = k }
+                return JSONValueInsight.markKind(text, isString: true, key: key, decodes: mayDecode)
             }
-            let text = JSONLocator.decodeString(u, value)
-                ?? String(decoding: u[value.location..<NSMaxRange(value)], as: UTF16.self)
-            var key: String?
-            if case .key(let k) = step(in: frame) { key = k }
-            return JSONValueInsight.imageSource(string: text, key: key)
+        }
+
+        /// Could a Decode reading (JWT, Base64, `%XX`, `\uXXXX`) apply to this quoted string?
+        private func mightDecode(_ value: NSRange) -> Bool {
+            var space = false
+            for k in (value.location + 1)..<NSMaxRange(value) {
+                switch u[k] {
+                case 0x25, 0x5C: return true   // % \
+                case 0x20: space = true
+                default: break
+                }
+            }
+            return !space && value.length >= JSONValueInsight.minimumBase64Length + 2
         }
 
         /// How the frame's current member is reached from it.

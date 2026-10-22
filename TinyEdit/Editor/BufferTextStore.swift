@@ -31,8 +31,9 @@ final class BufferTextStore: NSObject, NSTextStorageDelegate {
     var changeMarkers: [ChangeMarker] = []
     /// Task items for the status bar, with the generation and language they were counted for. Session-only.
     var taskCounts: (counts: TaskList.Counts?, generation: UInt64, language: EditorLanguage)?
-    /// Picture values of a JSON tab, for the editor's Preview icons, with the generation they were found for.
-    var jsonImages: (values: [JSONImageValue], generation: UInt64)?
+    /// Marked values of a JSON tab (pictures, links, colors, times), for the editor's marks after their lines,
+    /// with the generation they were found for.
+    var jsonMarks: (values: [JSONValueMark], generation: UInt64)?
     private var lineIndexTask: Task<Void, Never>?
 
     private var notifyEdits = true

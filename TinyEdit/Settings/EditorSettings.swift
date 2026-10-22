@@ -80,6 +80,14 @@ struct EditorSettings: Equatable, Sendable {
     var recognizeTextInImages = true
     /// A pasted curl command offers to send the request it describes.
     var recognizeCurlCommands = true
+    /// JSON value marks after their lines (`JSONMarkOptions`).
+    var jsonMarkImages = true
+    var jsonMarkLinks = true
+    var jsonMarkColors = true
+    var jsonMarkTimes = true
+    var jsonMarkJWTExpiry = true
+    var jsonMarkDecodes = true
+    var jsonMarkSizes = true
 
     private enum Key {
         static let fontSize = "tinyedit.fontSize"
@@ -99,6 +107,13 @@ struct EditorSettings: Equatable, Sendable {
         static let ensureFinalNewline = "tinyedit.ensureFinalNewline"
         static let recognizeTextInImages = "tinyedit.recognizeTextInImages"
         static let recognizeCurlCommands = "tinyedit.recognizeCurlCommands"
+        static let jsonMarkImages = "tinyedit.jsonMarkImages"
+        static let jsonMarkLinks = "tinyedit.jsonMarkLinks"
+        static let jsonMarkColors = "tinyedit.jsonMarkColors"
+        static let jsonMarkTimes = "tinyedit.jsonMarkTimes"
+        static let jsonMarkJWTExpiry = "tinyedit.jsonMarkJWTExpiry"
+        static let jsonMarkDecodes = "tinyedit.jsonMarkDecodes"
+        static let jsonMarkSizes = "tinyedit.jsonMarkSizes"
     }
 
     static func load(from d: UserDefaults = .standard) -> EditorSettings {
@@ -122,6 +137,13 @@ struct EditorSettings: Equatable, Sendable {
         if d.object(forKey: Key.recognizeCurlCommands) != nil {
             s.recognizeCurlCommands = d.bool(forKey: Key.recognizeCurlCommands)
         }
+        if d.object(forKey: Key.jsonMarkImages) != nil { s.jsonMarkImages = d.bool(forKey: Key.jsonMarkImages) }
+        if d.object(forKey: Key.jsonMarkLinks) != nil { s.jsonMarkLinks = d.bool(forKey: Key.jsonMarkLinks) }
+        if d.object(forKey: Key.jsonMarkColors) != nil { s.jsonMarkColors = d.bool(forKey: Key.jsonMarkColors) }
+        if d.object(forKey: Key.jsonMarkTimes) != nil { s.jsonMarkTimes = d.bool(forKey: Key.jsonMarkTimes) }
+        if d.object(forKey: Key.jsonMarkJWTExpiry) != nil { s.jsonMarkJWTExpiry = d.bool(forKey: Key.jsonMarkJWTExpiry) }
+        if d.object(forKey: Key.jsonMarkDecodes) != nil { s.jsonMarkDecodes = d.bool(forKey: Key.jsonMarkDecodes) }
+        if d.object(forKey: Key.jsonMarkSizes) != nil { s.jsonMarkSizes = d.bool(forKey: Key.jsonMarkSizes) }
         if let raw = d.string(forKey: Key.appearance), let mode = AppearanceMode(rawValue: raw) { s.appearance = mode }
         if let raw = d.string(forKey: Key.appIcon) {
             // Map retired icons to the closest remaining design when upgrading.
@@ -155,6 +177,13 @@ struct EditorSettings: Equatable, Sendable {
         d.set(ensureFinalNewline, forKey: Key.ensureFinalNewline)
         d.set(recognizeTextInImages, forKey: Key.recognizeTextInImages)
         d.set(recognizeCurlCommands, forKey: Key.recognizeCurlCommands)
+        d.set(jsonMarkImages, forKey: Key.jsonMarkImages)
+        d.set(jsonMarkLinks, forKey: Key.jsonMarkLinks)
+        d.set(jsonMarkColors, forKey: Key.jsonMarkColors)
+        d.set(jsonMarkTimes, forKey: Key.jsonMarkTimes)
+        d.set(jsonMarkJWTExpiry, forKey: Key.jsonMarkJWTExpiry)
+        d.set(jsonMarkDecodes, forKey: Key.jsonMarkDecodes)
+        d.set(jsonMarkSizes, forKey: Key.jsonMarkSizes)
         d.set(appearance.rawValue, forKey: Key.appearance)
         d.set(appIcon.rawValue, forKey: Key.appIcon)
         d.set(backgroundPattern.rawValue, forKey: Key.backgroundPattern)
@@ -164,7 +193,8 @@ struct EditorSettings: Equatable, Sendable {
     var preferredIndent: IndentStyle { insertSpaces ? .spaces(tabWidth) : .tabs }
 
     var decorationOptions: EditorDecorationOptions {
-        EditorDecorationOptions(currentLine: highlightCurrentLine, indentGuides: showIndentGuides, invisibles: showInvisibles)
+        EditorDecorationOptions(currentLine: highlightCurrentLine, indentGuides: showIndentGuides, invisibles: showInvisibles,
+                                jsonMarks: JSONMarkOptions(images: jsonMarkImages, links: jsonMarkLinks, colors: jsonMarkColors, times: jsonMarkTimes, jwtExpiry: jsonMarkJWTExpiry, decodes: jsonMarkDecodes, sizes: jsonMarkSizes))
     }
 
     func clamped() -> EditorSettings {

@@ -120,10 +120,10 @@ final class EditorTextView: NSTextView {
     /// Markdown and Plain Text flip a task's box when it is clicked. Nil leaves task lists alone.
     var taskLanguage: (() -> EditorLanguage)?
 
-    /// The picture values of a JSON tab, in document order, read in the overlay pass. Empty draws no icons.
-    var jsonImageValues: (() -> [JSONImageValue])?
-    /// A click on a value's Preview icon, with the value's range.
-    var onJSONImageClick: ((NSRange) -> Void)?
+    /// The marked values of a JSON tab, in document order, read in the overlay pass. Empty draws no marks.
+    var jsonValueMarks: (() -> [JSONValueMark])?
+    /// A click on a value's mark (Preview, link or time), with the value's range.
+    var onJSONMarkClick: ((NSRange) -> Void)?
 
     /// Language and the inline-calculation setting, read when the caret moves. Nil leaves the ghost off.
     var inlineCalculationContext: (() -> InlineCalculator.Context?)?
@@ -206,13 +206,13 @@ final class EditorTextView: NSTextView {
     // MARK: Task boxes
 
     /// A plain click on a task's box ticks or unticks it as one undo step. The selection stays where it was.
-    /// A plain click on a JSON picture's Preview icon previews it.
+    /// A plain click on a JSON value's mark previews the picture, opens the link or copies the time.
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 1, event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty {
             let point = convert(event.locationInWindow, from: nil)
-            if let mark = imageMark(at: point) {
+            if let mark = valueMark(at: point) {
                 window?.makeFirstResponder(self)
-                onJSONImageClick?(mark.valueRange)
+                onJSONMarkClick?(mark.valueRange)
                 return
             }
             if flipTask(at: point) {
@@ -223,9 +223,9 @@ final class EditorTextView: NSTextView {
         super.mouseDown(with: event)
     }
 
-    /// The Preview icon under `point`, in view coordinates, as last drawn.
-    func imageMark(at point: NSPoint) -> EditorDecorations.ImageMark? {
-        lastDecorations.imageMarks.first { $0.rect.contains(point) }
+    /// The clickable value mark under `point`, in view coordinates, as last drawn. A color swatch is not one.
+    func valueMark(at point: NSPoint) -> EditorDecorations.ValueMark? {
+        lastDecorations.valueMarks.first { $0.isClickable && $0.rect.contains(point) }
     }
 
     /// Flips the box under `point`, in view coordinates. False when there is none.
@@ -238,14 +238,14 @@ final class EditorTextView: NSTextView {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         let point = convert(event.locationInWindow, from: nil)
-        let mark = imageMark(at: point)
+        let mark = valueMark(at: point)
         if mark != nil || taskItem(at: point) != nil { NSCursor.pointingHand.set() }
-        if mark?.valueRange != lastDecorations.imageMarks.first(where: \.hovered)?.valueRange { setNeedsOverlays() }
+        if mark?.valueRange != lastDecorations.valueMarks.first(where: \.hovered)?.valueRange { setNeedsOverlays() }
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
-        if lastDecorations.imageMarks.contains(where: \.hovered) { setNeedsOverlays() }
+        if lastDecorations.valueMarks.contains(where: \.hovered) { setNeedsOverlays() }
     }
 
     /// The task whose box is under `point`, in view coordinates. Lays out only the box's line.

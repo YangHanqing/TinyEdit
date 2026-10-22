@@ -956,12 +956,12 @@ final class AppStateIntegrationTests: XCTestCase {
         type("{\n  \"name\": \"Ada\",\n  \"icon\": \"data:image/png;base64,\(png)\"\n}", into: s)
         s.host.activate(s.activeStore!, settings: s.settings)
         s.host.textView.setSelectedRange(NSRange(location: 3, length: 0))
-        XCTAssertEqual(s.visibleJSONImages, [])                              // Plain Text has none
+        XCTAssertEqual(s.visibleJSONMarks, [])                               // Plain Text has none
         s.setLanguage(.json)
-        let image = try XCTUnwrap(s.visibleJSONImages.first)
-        XCTAssertEqual(image.source, .inline)
+        let image = try XCTUnwrap(s.visibleJSONMarks.first(where: \.isImage))
+        XCTAssertEqual(image.kind, .image(.inline))
 
-        s.previewJSONImage(at: image.valueRange)
+        s.activateJSONMark(at: image.valueRange)
         XCTAssertEqual(s.host.textView.selectedRange(), NSRange(location: image.valueRange.location + 1, length: 0))
         XCTAssertEqual(s.jsonCaret?.path, "icon")
         for _ in 0..<40 where s.jsonValueCard == nil { try await Task.sleep(for: .milliseconds(25)) }
@@ -971,7 +971,37 @@ final class AppStateIntegrationTests: XCTestCase {
         // An edit moves the value: the icons follow the new text, never the old ranges.
         s.host.textView.setSelectedRange(NSRange(location: 1, length: 0))
         s.host.textView.insertText("\n", replacementRange: NSRange(location: 1, length: 0))
-        XCTAssertEqual(s.visibleJSONImages.first?.valueRange.location, image.valueRange.location + 1)
+        XCTAssertEqual(s.visibleJSONMarks.first(where: \.isImage)?.valueRange.location, image.valueRange.location + 1)
+    }
+
+    func testJSONTimeMarkCopiesTheLocalTime() async throws {
+        let s = await launch()
+        type("{\n  \"created\": 1700000000,\n  \"home\": \"https://x.test/\"\n}", into: s)
+        s.host.activate(s.activeStore!, settings: s.settings)
+        s.setLanguage(.json)
+        let marks = s.visibleJSONMarks.filter { if case .size = $0.kind { false } else { true } }
+        XCTAssertEqual(marks.count, 2)
+        guard case .date = marks.first?.kind, case .link = marks.last?.kind else { return XCTFail("\(marks)") }
+        let pasteboard = NSPasteboard.withUniqueName()
+        s.activateJSONMark(at: marks[0].valueRange, pasteboard: pasteboard)
+        XCTAssertEqual(pasteboard.string(forType: .string),
+                       JSONValueInsight.dateText(Date(timeIntervalSince1970: 1_700_000_000), milliseconds: false))
+        pasteboard.clearContents()
+        s.activateJSONMark(at: NSRange(location: 0, length: 1), pasteboard: pasteboard)   // no mark there: nothing happens
+        XCTAssertNil(pasteboard.string(forType: .string))
+    }
+
+    func testJSONDecodeMarkOpensTheDecodeCard() async throws {
+        let s = await launch()
+        type("{\n  \"token\": \"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzY3MjI1NjAwfQ.c2ln\"\n}", into: s)
+        s.host.activate(s.activeStore!, settings: s.settings)
+        s.setLanguage(.json)
+        let mark = try XCTUnwrap(s.visibleJSONMarks.first { if case .decode = $0.kind { true } else { false } })
+        XCTAssertEqual(mark.kind, .decode(jwtExpiry: Date(timeIntervalSince1970: 1_767_225_600)))
+        s.activateJSONMark(at: mark.valueRange)
+        XCTAssertEqual(s.jsonCaret?.path, "token")
+        guard case .decodes(let candidates) = s.jsonValueCard?.content else { return XCTFail("no decode card") }
+        XCTAssertEqual(candidates.first?.kind, .jwt)
     }
 
     func testBlankOutsideRange() {
