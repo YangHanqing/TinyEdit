@@ -37,12 +37,14 @@ targets:
     platform: macOS
     sources:
       - path: TinyEdit
+    dependencies:
+      - target: TinyEditQuickLook
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit
         PRODUCT_NAME: TinyEdit
         # 0.1.x per feature; the first two parts change only when the owner says so.
-        MARKETING_VERSION: "0.2.10"
+        MARKETING_VERSION: "0.2.12"
         # yyyyMMddHHmm. scripts/install.sh stamps the minute it builds.
         CURRENT_PROJECT_VERSION: "202610211409"
         ENABLE_APP_SANDBOX: YES
@@ -54,6 +56,48 @@ targets:
         # A separate identity lets the test host launch while the installed app is running.
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit.debug
+  # Quick Look (Space in Finder) for Markdown. It compiles the preview's sources itself: this list is
+  # what the Markdown preview needs; the curl and JSON files come in only through the image loader, the
+  # editing ones through the Markdown highlighter's task rule.
+  TinyEditQuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: TinyEditQuickLook
+      - path: TinyEdit/Markdown
+        excludes: [MarkdownPreview.swift]
+      - path: TinyEdit/Highlighting
+        excludes: [HighlightController.swift, HighlightDiff.swift]
+      - TinyEdit/Theme/Theme.swift
+      - TinyEdit/Models/EditorLanguage.swift
+      - TinyEdit/Models/TextEncoding.swift
+      - TinyEdit/Models/LineEnding.swift
+      - TinyEdit/Files/FileLoader.swift
+      - TinyEdit/Utilities/ContentHash.swift
+      - TinyEdit/Utilities/AppPaths.swift
+      - TinyEdit/Tools/RemoteImageLoader.swift
+      - TinyEdit/Tools/CurlRunner.swift
+      - TinyEdit/Tools/CurlCommand.swift
+      - TinyEdit/Tools/JSONFormatter.swift
+      - TinyEdit/Models/ContentLanguageDetector.swift
+      - TinyEdit/Editor/TaskList.swift
+      - TinyEdit/Editor/LineEditing.swift
+      - TinyEdit/Editor/Indentation.swift
+      - TinyEdit/Localizable.xcstrings
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit.quicklook
+        PRODUCT_NAME: TinyEditQuickLook
+        MARKETING_VERSION: "0.2.12"
+        CURRENT_PROJECT_VERSION: "202610211409"
+        ENABLE_APP_SANDBOX: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: TinyEditQuickLook/Info.plist
+        CODE_SIGN_ENTITLEMENTS: TinyEditQuickLook/TinyEditQuickLook.entitlements
+      configs:
+        # An embedded extension's identifier must start with its app's.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit.debug.quicklook
   TinyEditTests:
     type: bundle.unit-test
     platform: macOS

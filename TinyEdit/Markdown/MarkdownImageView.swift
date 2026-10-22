@@ -153,6 +153,8 @@ extension EnvironmentValues {
     @Entry var markdownDocumentURL: URL? = nil
     @Entry var markdownImageAccess: MarkdownImageAccess? = nil
     @Entry var markdownAvailableWidth: CGFloat = 600
+    /// Off in Quick Look, whose sandbox reaches only the previewed file: images show as their alt text.
+    @Entry var markdownImagesLoad = true
 }
 
 struct MarkdownImageView: View {
@@ -161,6 +163,7 @@ struct MarkdownImageView: View {
     @Environment(\.markdownDocumentURL) private var document
     @Environment(\.markdownImageAccess) private var access
     @Environment(\.markdownAvailableWidth) private var availableWidth
+    @Environment(\.markdownImagesLoad) private var loads
     @State private var image: NSImage?
     @State private var failure: String?
     @State private var retry = 0
@@ -189,19 +192,7 @@ struct MarkdownImageView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label { Text(verbatim: alt.isEmpty ? reference.source.lastPathComponent : alt) }
                         icon: { Image(systemName: "photo") }
-                    if loading { ProgressView().controlSize(.small) }
-                    else if case .remote = source, !requestedRemote {
-                        Button("Load Image") { remoteConsent = identity }
-                    } else if case .unsaved = source {
-                        Text("Save the document to resolve relative images.").font(.caption)
-                    } else if let failure {
-                        Text(failure).font(.caption)
-                        Button("Retry") { retry += 1 }
-                        if case .local = source {
-                            Button("Allow Folder…") { access?.chooseFolder(document: document) }
-                            if let message = access?.authorizationMessage { Text(message).font(.caption) }
-                        }
-                    }
+                    if loads { status }
                 }
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .padding(8)
@@ -210,6 +201,22 @@ struct MarkdownImageView: View {
             }
         }
         .task(id: identity + "|\(requestedRemote)|\(retry)") { await load() }
+    }
+
+    @ViewBuilder private var status: some View {
+        if loading { ProgressView().controlSize(.small) }
+        else if case .remote = source, !requestedRemote {
+            Button("Load Image") { remoteConsent = identity }
+        } else if case .unsaved = source {
+            Text("Save the document to resolve relative images.").font(.caption)
+        } else if let failure {
+            Text(failure).font(.caption)
+            Button("Retry") { retry += 1 }
+            if case .local = source {
+                Button("Allow Folder…") { access?.chooseFolder(document: document) }
+                if let message = access?.authorizationMessage { Text(message).font(.caption) }
+            }
+        }
     }
 
     /// Width/height HTML hints are bounds; fit into the current column without stretching the image.
@@ -228,6 +235,7 @@ struct MarkdownImageView: View {
         failure = nil
         loading = false
         let loadIdentity = identity
+        guard loads else { return }
         if case .remote = source, !requestedRemote { return }
         if case .unsaved = source { return }
         let url: URL

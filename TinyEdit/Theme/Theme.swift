@@ -105,6 +105,25 @@ enum Theme {
     }
 }
 
+extension TokenKind {
+    var color: NSColor {
+        switch self {
+        case .keyword, .taskBox: Theme.syntaxKeyword
+        case .heading, .tag: Theme.syntaxEntity
+        case .string: Theme.syntaxString
+        case .number: Theme.syntaxNumber
+        case .comment, .taskDone: Theme.syntaxComment
+        case .boolean, .null: Theme.syntaxLiteral
+        case .code: Theme.syntaxCode
+        case .key: Theme.syntaxKey
+        case .attribute: Theme.syntaxAttribute
+        case .preprocessor: Theme.syntaxPreprocessor
+        case .added: Theme.syntaxAdded
+        case .removed: Theme.syntaxRemoved
+        }
+    }
+}
+
 /// SwiftUI mirrors of the chrome tokens.
 extension Color {
     static let editorBackground = Color(nsColor: Theme.editorBackground)

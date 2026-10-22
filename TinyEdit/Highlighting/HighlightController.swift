@@ -1,24 +1,5 @@
 import AppKit
 
-extension TokenKind {
-    var color: NSColor {
-        switch self {
-        case .keyword, .taskBox: Theme.syntaxKeyword
-        case .heading, .tag: Theme.syntaxEntity
-        case .string: Theme.syntaxString
-        case .number: Theme.syntaxNumber
-        case .comment, .taskDone: Theme.syntaxComment
-        case .boolean, .null: Theme.syntaxLiteral
-        case .code: Theme.syntaxCode
-        case .key: Theme.syntaxKey
-        case .attribute: Theme.syntaxAttribute
-        case .preprocessor: Theme.syntaxPreprocessor
-        case .added: Theme.syntaxAdded
-        case .removed: Theme.syntaxRemoved
-        }
-    }
-}
-
 /// Applies token colors as TextKit 2 rendering attributes. Never touches NSTextStorage, so highlight
 /// cannot reach undo, dirty, the pasteboard, or typing attributes.
 @MainActor
