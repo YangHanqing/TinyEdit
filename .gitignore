@@ -1,0 +1,21 @@
+# Generated projects and local build output
+*.xcodeproj
+build/
+DerivedData/
+.DS_Store
+*.xcuserstate
+
+# Local planning, design drafts and agent configuration
+/docs/
+/design/
+CLAUDE.md
+AGENTS.md
+AGENTS.local.md
+/.agents/
+/.claude/
+/.codex/
+/TODO.csv
+
+# Local icon design tooling
+/scripts/make_icons.sh
+/scripts/mask_icon.swift

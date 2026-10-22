@@ -1,0 +1,369 @@
+import AppKit
+
+/// What the status bar's JSON buttons would act on.
+struct JSONCaretInfo: Equatable {
+    var path: String
+    var hasKey: Bool
+    /// Open Value is offered for strings, objects and arrays, not for numbers, booleans or null.
+    var canOpen: Bool
+    /// Links, pictures, decodes, times and colors in the value.
+    var value = JSONValueInsight()
+}
+
+extension JSONCaretInfo {
+    init(_ m: JSONMember, in u: [UInt16]) {
+        self.init(path: m.pathText, hasKey: m.key != nil, canOpen: m.kind != .scalar, value: JSONValueInsight(m, in: u))
+    }
+}
+
+/// The card a JSON value button brought up over the editor: the value's decodes, or its picture.
+struct JSONValueCard: Equatable {
+    enum Content: Equatable {
+        case decodes([PasteDecodeCandidate])
+        case loadingImage(host: String)
+        case image(PreviewImage)
+        case failed(String)
+    }
+
+    var bufferID: UUID
+    /// The member's path; the card goes when the caret leaves that member.
+    var path: String
+    var content: Content
+}
+
+/// A picture shown on the JSON value card. Compared by identity: it does not change once loaded.
+struct PreviewImage: Equatable {
+    let id = UUID()
+    let image: NSImage
+    let data: Data
+    let pixelSize: CGSize
+    /// Where it was downloaded from; nil for a `data:` URI.
+    let link: URL?
+    let suggestedName: String
+
+    static func == (a: PreviewImage, b: PreviewImage) -> Bool { a.id == b.id }
+}
+
+extension AppState {
+    /// Finds the member around the selection of a JSON tab, and after an edit the picture values the editor
+    /// marks with a Preview icon. Small documents are scanned on the spot; larger ones off the main thread
+    /// after a short pause, with the previous buttons left up meanwhile (the icons wait for the new scan).
+    /// Written only when it changes. The buttons locate the member again when clicked, so a result
+    /// that is a moment stale never decides what is copied.
+    func refreshJSONCaret(_ store: BufferTextStore? = nil) {
+        jsonCaretTask?.cancel()
+        jsonCaretTask = nil
+        guard let store = store ?? activeStore, store.id == session.selectedBufferID,
+              session.buffers[store.id]?.language == .json, store.length <= JSONLocator.sizeLimit else {
+            return setJSONCaret(nil)
+        }
+        let selection = store.viewState.selection
+        let ns = store.textStorage.mutableString
+        let generation = store.generation
+        let needsImages = store.jsonImages?.generation != generation
+        if store.length <= JSONLocator.synchronousLimit {
+            let units = JSONLocator.units(of: ns)
+            setJSONCaret(JSONLocator.member(around: selection, in: units).map { JSONCaretInfo($0, in: units) })
+            if needsImages { setJSONImages(JSONLocator.imageValues(in: units), generation: generation, store: store) }
+            return
+        }
+        jsonCaretTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard let self, !Task.isCancelled, store.generation == generation else { return }
+            let units = JSONLocator.units(of: ns)
+            let (info, images) = await Task.detached(priority: .userInitiated) {
+                (JSONLocator.member(around: selection, in: units).map { JSONCaretInfo($0, in: units) },
+                 needsImages ? JSONLocator.imageValues(in: units) : nil)
+            }.value
+            guard !Task.isCancelled, store.generation == generation else { return }
+            self.setJSONCaret(info)
+            if let images { self.setJSONImages(images, generation: generation, store: store) }
+        }
+    }
+
+    private func setJSONImages(_ values: [JSONImageValue], generation: UInt64, store: BufferTextStore) {
+        store.jsonImages = (values, generation)
+        if store.id == session.selectedBufferID { host.textView.setNeedsOverlays() }
+    }
+
+    /// The selected JSON tab's picture values, while they were found for its current text.
+    var visibleJSONImages: [JSONImageValue] {
+        guard let store = activeStore, selectedBuffer?.language == .json,
+              let found = store.jsonImages, found.generation == store.generation else { return [] }
+        return found.values
+    }
+
+    /// A value card stays only while the caret is on the member it was opened for.
+    func setJSONCaret(_ info: JSONCaretInfo?) {
+        if info != jsonCaret { jsonCaret = info }
+        if let card = jsonValueCard, info?.path != card.path || card.bufferID != session.selectedBufferID {
+            dismissJSONValueCard()
+        }
+    }
+
+    func copyJSONPath(to pasteboard: NSPasteboard = .general) {
+        guard let found = currentJSONMember() else { return }
+        copy(found.member.pathText, to: pasteboard)
+        showToast(String(localized: "Copied path \(found.member.pathText)"))
+    }
+
+    func copyJSONKey(to pasteboard: NSPasteboard = .general) {
+        guard let key = currentJSONMember()?.member.key else { return }
+        copy(key, to: pasteboard)
+        showToast(String(localized: "Copied key “\(key)”"))
+    }
+
+    func copyJSONValue(to pasteboard: NSPasteboard = .general) {
+        guard let found = currentJSONMember() else { return }
+        copy(JSONLocator.valueText(found.member, in: found.units), to: pasteboard)
+        showToast(String(localized: "Copied value of \(found.member.pathText)"))
+    }
+
+    /// The value in a new Untitled tab named after its key. A string that holds JSON is decoded and
+    /// formatted; an object or array opens as JSON; any other string is left to language detection.
+    func openJSONValue() {
+        guard launchGateOpen, let id = session.selectedBufferID, let found = currentJSONMember(),
+              found.member.kind != .scalar, ensureRoomForTab() else { return }
+        let member = found.member
+        let value = JSONLocator.valueText(member, in: found.units)
+        Task { [weak self] in
+            let (text, isJSON) = await Task.detached(priority: .userInitiated) {
+                Self.openedText(value, kind: member.kind)
+            }.value
+            self?.openValueTab(text, isJSON: isJSON, title: member.shortName, from: id)
+        }
+    }
+
+    /// A new Untitled tab holding `text`, named `title`, set to JSON when it is.
+    private func openValueTab(_ text: String, isJSON: Bool, title: String, from id: UUID) {
+        guard session.buffers[id] != nil else { return }
+        openTranslationTab(text)
+        guard let newID = session.selectedBufferID, newID != id else { return }
+        if isJSON { setLanguage(.json) }
+        renameTab(newID, to: EditorBuffer.derivedTitle(fromPrefix: title, limit: 24) ?? title)
+    }
+
+    nonisolated static func openedText(_ value: String, kind: JSONMember.Kind) -> (String, isJSON: Bool) {
+        guard kind == .string else { return (value, kind != .scalar) }
+        guard let first = value.first(where: { !$0.isWhitespace }), first == "{" || first == "[" else {
+            return (value, false)
+        }
+        switch JSONFormatter.format(text: value, selection: nil) {
+        case .formatted(let pretty, _): return (pretty, true)
+        case .unchanged: return (value, true)
+        case .invalid: return (value, false)
+        }
+    }
+
+    // MARK: Value actions
+
+    /// Open Link: the http(s) URL in the default browser. TinyEdit itself fetches nothing.
+    func openJSONLink() {
+        guard let url = currentJSONValue()?.insight.link else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Query: the link's query parameters as a JSON object in a new tab.
+    func openJSONQuery() {
+        guard launchGateOpen, let id = session.selectedBufferID, let found = currentJSONValue() else { return }
+        guard let url = found.insight.link, let json = JSONValueInsight.queryJSON(url) else {
+            return showToast(String(localized: "The link has no query parameters"))
+        }
+        guard ensureRoomForTab() else { return }
+        openValueTab(json, isJSON: true, title: "\(found.member.shortName) query", from: id)
+    }
+
+    /// Copies the Unix timestamp as the local date and time the status bar shows.
+    func copyJSONDate(to pasteboard: NSPasteboard = .general) {
+        guard let insight = currentJSONValue()?.insight, let date = insight.date else { return }
+        let text = JSONValueInsight.dateText(date, milliseconds: insight.dateHasMilliseconds)
+        copy(text, to: pasteboard)
+        showToast(String(localized: "Copied \(text)"))
+    }
+
+    /// Decode: the value's readings (JWT, Base64, URL, `\uXXXX`) on the card, the first one shown.
+    func decodeJSONValue() {
+        guard let id = session.selectedBufferID, let found = currentJSONValue() else { return }
+        let kinds = found.insight.decodes
+        let candidates = (PasteDecodeDetector.candidates(in: found.value) ?? []).filter { kinds.contains($0.kind) }
+        guard !candidates.isEmpty else { return showToast(String(localized: "Nothing to decode")) }
+        showJSONValueCard(JSONValueCard(bufferID: id, path: found.member.pathText, content: .decodes(candidates)))
+    }
+
+    func copyDecodedJSONValue(_ candidate: PasteDecodeCandidate) {
+        copy(candidate.decoded, to: .general)
+        dismissJSONValueCard()
+        showToast(String(localized: "Copied"))
+    }
+
+    func openDecodedJSONValue(_ candidate: PasteDecodeCandidate) {
+        guard launchGateOpen, let id = session.selectedBufferID, let card = jsonValueCard, ensureRoomForTab() else { return }
+        dismissJSONValueCard()
+        let title = card.path.split(separator: ".").last.map(String.init) ?? card.path
+        openValueTab(candidate.decoded, isJSON: candidate.isJSON, title: title, from: id)
+    }
+
+    /// Preview: a `data:image/` URI is decoded here; an http(s) image is downloaded now, on this click only.
+    func previewJSONImage() {
+        guard let id = session.selectedBufferID, let found = currentJSONValue(), let source = found.insight.image else { return }
+        let path = found.member.pathText
+        let name = found.member.shortName
+        let value = found.value
+        jsonValueTask?.cancel()
+        switch source {
+        case .inline:
+            jsonValueTask = Task { [weak self] in
+                let uri = await Task.detached(priority: .userInitiated) { DataURI.parse(value) }.value
+                guard let self, !Task.isCancelled else { return }
+                guard let uri else { return self.finishImage(id, path: path, .failure(.notImage)) }
+                let file = Self.fileName(name, extension: uri.fileExtension)
+                self.finishImage(id, path: path, .success((uri.data, nil, file)))
+            }
+        case .remote:
+            guard let url = found.insight.link else { return }
+            showJSONValueCard(JSONValueCard(bufferID: id, path: path, content: .loadingImage(host: url.host() ?? "")))
+            jsonValueTask = Task { [weak self] in
+                let work = Task.detached(priority: .userInitiated) { () -> Result<(Data, String?), ImagePreviewFailure> in
+                    do {
+                        let loaded = try await RemoteImageLoader.load(url)
+                        return .success((loaded.data, loaded.mimeType))
+                    } catch let failure as ImagePreviewFailure {
+                        return .failure(failure)
+                    } catch {
+                        return .failure(.request(.other))
+                    }
+                }
+                let result = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+                guard let self, !Task.isCancelled else { return }
+                self.finishImage(id, path: path, result.map { data, mime in
+                    let ext = mime.flatMap(DataURI.fileExtension(forMIMEType:)) ?? url.pathExtension
+                    let last = url.deletingPathExtension().lastPathComponent
+                    let file = Self.fileName(last.isEmpty || last == "/" ? name : last, extension: ext.isEmpty ? "png" : ext)
+                    return (data, url, file)
+                })
+            }
+        }
+    }
+
+    /// The editor's Preview icon: puts the caret in the value, so the card stays while it is there, and previews it.
+    func previewJSONImage(at valueRange: NSRange) {
+        guard let store = activeStore, NSMaxRange(valueRange) <= store.length else { return }
+        host.textView.setSelectedRange(NSRange(location: valueRange.location + 1, length: 0))
+        guard let found = currentJSONMember(), found.member.valueRange == valueRange else { return }
+        setJSONCaret(JSONCaretInfo(found.member, in: found.units))
+        previewJSONImage()
+    }
+
+    private func finishImage(_ id: UUID, path: String, _ result: Result<(Data, URL?, String), ImagePreviewFailure>) {
+        jsonValueTask = nil
+        guard session.selectedBufferID == id, jsonCaret?.path == path else { return }
+        let content: JSONValueCard.Content
+        switch result {
+        case .success(let (data, link, file)):
+            if let image = NSImage(data: data), image.isValid {
+                let rep = image.representations.first
+                let pixels = rep.map { CGSize(width: $0.pixelsWide, height: $0.pixelsHigh) } ?? .zero
+                let size = pixels.width > 0 && pixels.height > 0 ? pixels : image.size
+                content = .image(PreviewImage(image: image, data: data, pixelSize: size, link: link, suggestedName: file))
+            } else {
+                content = .failed(Self.imageFailureMessage(.notImage))
+            }
+        case .failure(let failure):
+            content = .failed(Self.imageFailureMessage(failure))
+        }
+        showJSONValueCard(JSONValueCard(bufferID: id, path: path, content: content))
+    }
+
+    static func imageFailureMessage(_ failure: ImagePreviewFailure) -> String {
+        switch failure {
+        case .request(let request): CurlShownFailure.failed(request).message
+        case .status(let code):
+            String(localized: "The server answered \("\(code) \(CurlRunner.reason(for: code))".trimmingCharacters(in: .whitespaces)).")
+        case .notImage: String(localized: "This is not a picture TinyEdit can show.")
+        }
+    }
+
+    nonisolated static func fileName(_ base: String, extension ext: String) -> String {
+        let cleaned = base.map { "/:\\".contains($0) ? "-" : $0 }
+        let name = String(cleaned).trimmingCharacters(in: .whitespaces)
+        return (name.isEmpty ? "image" : name) + "." + ext
+    }
+
+    func copyPreviewImage() {
+        guard case .image(let preview) = jsonValueCard?.content else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([preview.image])
+        showToast(String(localized: "Copied image"))
+    }
+
+    func savePreviewImage() {
+        guard case .image(let preview) = jsonValueCard?.content else { return }
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = preview.suggestedName
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try preview.data.write(to: url, options: .atomic)
+            showToast(String(localized: "Saved \(url.lastPathComponent)"))
+        } catch {
+            Log.files.error("image save failed: \((error as NSError).code)")
+            showToast(String(localized: "Could not save the image"), error: true)
+        }
+    }
+
+    func openPreviewImageLink() {
+        guard case .image(let preview) = jsonValueCard?.content, let link = preview.link else { return }
+        NSWorkspace.shared.open(link)
+    }
+
+    // MARK: Value card
+
+    private func showJSONValueCard(_ card: JSONValueCard) {
+        if jsonValueCard != card { jsonValueCard = card }
+    }
+
+    /// Close, Cancel or Escape. Stops a download in flight.
+    func dismissJSONValueCard() {
+        jsonValueTask?.cancel()
+        jsonValueTask = nil
+        if jsonValueCard != nil { jsonValueCard = nil }
+    }
+
+    func dismissJSONValueCardFromEscape() -> Bool {
+        guard jsonValueCard != nil else { return false }
+        dismissJSONValueCard()
+        return true
+    }
+
+    /// The first edit in the tab hides its card; later keystrokes write nothing.
+    func clearJSONValueCardAfterEdit(_ id: UUID) {
+        guard jsonValueCard?.bufferID == id || (jsonValueTask != nil && session.selectedBufferID == id) else { return }
+        dismissJSONValueCard()
+    }
+
+    /// The member at the caret with its value as text (a string decoded) and what is special about it.
+    private func currentJSONValue() -> (member: JSONMember, value: String, insight: JSONValueInsight)? {
+        guard let found = currentJSONMember() else { return nil }
+        let member = found.member
+        return (member, JSONLocator.valueText(member, in: found.units), JSONValueInsight(member, in: found.units))
+    }
+
+    private func currentJSONMember() -> (member: JSONMember, units: [UInt16])? {
+        guard let store = activeStore, selectedBuffer?.language == .json, store.length <= JSONLocator.sizeLimit
+        else { return nil }
+        let units = JSONLocator.units(of: store.textStorage.mutableString)
+        guard let member = JSONLocator.member(around: store.viewState.selection, in: units) else {
+            setJSONCaret(nil)
+            showToast(String(localized: "No JSON value at the cursor"))
+            return nil
+        }
+        return (member, units)
+    }
+
+    private func copy(_ text: String, to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+}

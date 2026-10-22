@@ -1,0 +1,76 @@
+name: TinyEdit
+options:
+  bundleIdPrefix: cn.hqyang
+  deploymentTarget:
+    macOS: "15.0"
+  developmentRegion: en
+  knownRegions:
+    - en
+    - zh-Hans
+    - zh-Hant
+    - ja
+    - ko
+    - de
+    - fr
+    - es
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    ARCHS: arm64
+    EXCLUDED_ARCHS: x86_64
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+  configs:
+    Debug:
+      ONLY_ACTIVE_ARCH: YES
+    Release:
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+targets:
+  TinyEdit:
+    type: application
+    platform: macOS
+    sources:
+      - path: TinyEdit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit
+        PRODUCT_NAME: TinyEdit
+        # 0.1.x per feature; the first two parts change only when the owner says so.
+        MARKETING_VERSION: "0.2.10"
+        # yyyyMMddHHmm. scripts/install.sh stamps the minute it builds.
+        CURRENT_PROJECT_VERSION: "202610211409"
+        ENABLE_APP_SANDBOX: YES
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: TinyEdit/TinyEdit.entitlements
+        INFOPLIST_FILE: TinyEdit/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        # A separate identity lets the test host launch while the installed app is running.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit.debug
+  TinyEditTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: TinyEditTests
+    dependencies:
+      - target: TinyEdit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cn.hqyang.tinyedit.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+schemes:
+  TinyEdit:
+    build:
+      targets:
+        TinyEdit: all
+    test:
+      targets:
+        - TinyEditTests
