@@ -15,11 +15,11 @@ struct AppCommands: Commands {
                     Button(url.lastPathComponent) { appState.openURLs([url]) }
                 }
                 Divider()
-                Button("Clear Menu") { NSDocumentController.shared.clearRecentDocuments(nil) }
+                Button("Clear Menu") { appState.clearRecentDocuments() }
             }
         }
         CommandGroup(replacing: .saveItem) {
-            Button("Close Tab") { appState.closeSelectedTab() }
+            Button("Close Tab") { appState.closeTabOrFrontWindow() }
                 .keyboardShortcut(AppShortcut.closeTab)
             Button("Close Window") { appState.hideWindow(NSApp.keyWindow) }
                 .keyboardShortcut(AppShortcut.closeWindow)
@@ -81,12 +81,8 @@ struct AppCommands: Commands {
             Divider()
             Button("Zoom In") { appState.zoom(by: 1) }
                 .keyboardShortcut(AppShortcut.zoomIn)
-            Button("Zoom In") { appState.zoom(by: 1) }
-                .keyboardShortcut(AppShortcut.zoomInAlternate)
             Button("Zoom Out") { appState.zoom(by: -1) }
                 .keyboardShortcut(AppShortcut.zoomOut)
-            Button("Zoom Out") { appState.zoom(by: -1) }
-                .keyboardShortcut(AppShortcut.zoomOutAlternate)
             Button("Reset Font Size") { appState.resetZoom() }
                 .keyboardShortcut(AppShortcut.resetZoom)
             Divider()
@@ -103,6 +99,7 @@ struct AppCommands: Commands {
                 ForEach(BackgroundPattern.allCases, id: \.self) { Text($0.label).tag($0) }
             }
         }
+        CommandGroup(replacing: .help) {}
         CommandMenu("Tools") {
             Button("Command Palette…") { appState.togglePalette() }
                 .keyboardShortcut(AppShortcut.commandPalette)

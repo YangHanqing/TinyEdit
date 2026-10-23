@@ -50,6 +50,7 @@ extension AppState {
     }
 
     func openURLsAsync(_ urls: [URL]) async {
+        showWindow() // the red button may have hidden it; the tab and any error toast must be seen
         flushImmediately() // a large read or a failed open must not sit inside another buffer's debounce window
         var firstNew: UUID?
         var existing: UUID?
@@ -88,7 +89,7 @@ extension AppState {
                 session.buffers[b.id] = b
                 session.tabOrder.append(b.id)
                 registerFile(id: b.id, url: url)
-                NSDocumentController.shared.noteNewRecentDocumentURL(url)
+                noteRecentDocument(url)
                 firstNew = firstNew ?? b.id
                 opened += 1
             } catch let e as FileOpenError {
@@ -258,7 +259,7 @@ extension AppState {
                 }
             }
             scheduleDirtyCheck(id)
-            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+            noteRecentDocument(url)
             flushImmediately()
             return .saved
         case .failure(let error):
@@ -333,6 +334,14 @@ extension AppState {
 
     func closeSelectedTab() {
         if let id = session.selectedBufferID { closeTab(id) }
+    }
+
+    /// File ▸ Close Tab (⌘W). The menu replaces the standard Close, so another window in front (Settings) is
+    /// closed here, and a hidden editor loses no tab it does not show.
+    func closeTabOrFrontWindow() {
+        if let key = NSApp.keyWindow, key !== window { return key.performClose(nil) }
+        guard window?.isVisible == true else { return }
+        closeSelectedTab()
     }
 
     func closeTab(_ id: UUID) {
@@ -500,5 +509,16 @@ extension AppState {
         }
     }
 
-    var recentURLs: [URL] { NSDocumentController.shared.recentDocumentURLs }
+    // MARK: Open Recent
+
+    /// The menu is built from the observed `recentURLs`; SwiftUI does not see NSDocumentController's list change.
+    func noteRecentDocument(_ url: URL) {
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        recentURLs = NSDocumentController.shared.recentDocumentURLs
+    }
+
+    func clearRecentDocuments() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        recentURLs = []
+    }
 }

@@ -55,6 +55,8 @@ final class AppState {
     var previewBlocks: [MarkdownNode] = []
     var previewMessage: String?
     var highlightReduced = false
+    /// File ▸ Open Recent. Refreshed by `noteRecentDocument` and `clearRecentDocuments`.
+    var recentURLs: [URL] = NSDocumentController.shared.recentDocumentURLs
 
     // MARK: Not observed
     /// Retains every BufferTextStore until its buffer leaves the session.

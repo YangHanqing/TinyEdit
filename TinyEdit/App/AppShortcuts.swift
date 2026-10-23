@@ -36,9 +36,11 @@ enum AppShortcut {
 
     static let markdownPreview = KeyboardShortcut("v", modifiers: [.command, .shift])
     static let zoomIn = KeyboardShortcut("+", modifiers: .command)
-    /// On a US keyboard "+" is Shift-"=", which AppKit does not treat as the same item: bind both.
+    /// Not a menu item: AppDelegate's key monitor. On a US keyboard "+" is Shift-"=", which AppKit does not
+    /// match to the ⌘+ item, and a second menu item would show twice.
     static let zoomInAlternate = KeyboardShortcut("=", modifiers: .command)
     static let zoomOut = KeyboardShortcut("-", modifiers: .command)
+    /// Not a menu item: AppDelegate's key monitor (Shift-"-").
     static let zoomOutAlternate = KeyboardShortcut("_", modifiers: .command)
     static let resetZoom = KeyboardShortcut("0", modifiers: .command)
 
@@ -95,7 +97,6 @@ enum ShortcutCatalog {
             ShortcutItem("Cut", key("x", .command)),
             ShortcutItem("Copy", key("c", .command)),
             ShortcutItem("Paste", key("v", .command)),
-            ShortcutItem("Paste and Match Style", key("v", [.command, .option, .shift])),
             ShortcutItem("Select All", key("a", .command)),
             ShortcutItem("Toggle Comment", AppShortcut.toggleComment),
             ShortcutItem("Toggle Task", AppShortcut.toggleTask),

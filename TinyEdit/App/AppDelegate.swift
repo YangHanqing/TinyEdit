@@ -20,9 +20,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     AppState.shared.newTabInWindow()
                     return true
                 }
+                if let delta = Self.zoomAlternate(event, flags: flags) {
+                    AppState.shared.zoom(by: delta)
+                    return true
+                }
                 return Self.handleTabKey(event, flags: flags)
             }
             return handled ? nil : event
+        }
+    }
+
+    /// ⌘= and ⌘_ (with or without the Shift the layout needs), the second keys for Zoom In and Zoom Out.
+    private static func zoomAlternate(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Double? {
+        guard flags.subtracting(.shift) == .command else { return nil }
+        switch event.charactersIgnoringModifiers {
+        case String(AppShortcut.zoomInAlternate.key.character): return 1
+        case String(AppShortcut.zoomOutAlternate.key.character): return -1
+        default: return nil
         }
     }
 
