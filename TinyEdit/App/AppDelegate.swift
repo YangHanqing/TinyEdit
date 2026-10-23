@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Tabs are ours. Keep AppKit's native window tabbing (and its menu items) out.
         NSWindow.allowsAutomaticWindowTabbing = false
+        AppState.shared.recentURLs = NSDocumentController.shared.recentDocumentURLs
         // There is one window, so ⌘N opens a tab like ⌘T. SwiftUI menus cannot hold a hidden second shortcut.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
