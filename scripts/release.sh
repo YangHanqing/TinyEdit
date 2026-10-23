@@ -1,9 +1,9 @@
 #!/bin/bash
-# Tests, builds and publishes the version in project.yml as a GitHub release with a DMG.
+# Tests, builds and publishes the version in project.yml as a GitHub release with a .pkg installer.
 # Usage: scripts/release.sh NOTES.md [--dry-run|--draft]
 #   NOTES.md: this version's changes, Chinese first, then English. The install section
-#   and the DMG's SHA-256 are appended here, so the notes file carries only the changes.
-#   --dry-run: everything except publishing; prints where the DMG and final notes are.
+#   and the package's SHA-256 are appended here, so the notes file carries only the changes.
+#   --dry-run: everything except publishing; prints where the package and final notes are.
 #   --draft:   publishes a draft release, visible only to the owner until published.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -54,18 +54,42 @@ diff <(codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -p - | sor
 
 echo "Packaging…"
 DIST=build/dist
-DMG="$DIST/TinyEdit-$VERSION-arm64.dmg"
-rm -rf "$DIST"
-mkdir -p "$DIST/stage"
-ditto "$APP" "$DIST/stage/TinyEdit.app"
-ln -s /Applications "$DIST/stage/Applications"
-hdiutil create -volname "TinyEdit $VERSION" -srcfolder "$DIST/stage" -fs HFS+ -format UDZO -ov "$DMG" 2>&1 \
-  | grep -v "deprecated" || true
-[ -f "$DMG" ] || fail "DMG was not created"
-rm -rf "$DIST/stage"
-codesign --sign "$IDENTITY" "$DMG"
-hdiutil verify "$DMG" >/dev/null 2>&1 || fail "DMG verification failed"
-SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
+PKG="$DIST/TinyEdit-$VERSION-arm64.pkg"
+rm -rf build/dist
+mkdir -p "$DIST/root" "$DIST/parts"
+ditto "$APP" "$DIST/root/TinyEdit.app"
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")"
+# Always install into /Applications: a relocatable bundle would instead update whatever
+# TinyEdit.app Installer finds elsewhere (Downloads, a build folder).
+pkgbuild --analyze --root "$DIST/root" "$DIST/parts/components.plist" >/dev/null
+i=0
+while plutil -extract "$i" raw -o /dev/null "$DIST/parts/components.plist" 2>/dev/null; do
+  plutil -replace "$i.BundleIsRelocatable" -bool NO "$DIST/parts/components.plist"
+  i=$((i + 1))
+done
+[ "$i" -gt 0 ] || fail "no bundle found to package"
+pkgbuild --root "$DIST/root" --component-plist "$DIST/parts/components.plist" --install-location /Applications \
+  --identifier "$BUNDLE_ID" --version "$VERSION" "$DIST/parts/TinyEdit.pkg" >/dev/null
+cat >"$DIST/parts/distribution.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>TinyEdit $VERSION</title>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <volume-check>
+        <allowed-os-versions><os-version min="15.0"/></allowed-os-versions>
+    </volume-check>
+    <choices-outline><line choice="default"/></choices-outline>
+    <choice id="default" title="TinyEdit"><pkg-ref id="$BUNDLE_ID"/></choice>
+    <pkg-ref id="$BUNDLE_ID" version="$VERSION" onConclusion="none">TinyEdit.pkg</pkg-ref>
+</installer-gui-script>
+EOF
+# Signing a package needs an Installer certificate, which an Apple Development account does
+# not have, so the package is unsigned; the app inside keeps its own signature.
+productbuild --distribution "$DIST/parts/distribution.xml" --package-path "$DIST/parts" "$PKG" >/dev/null
+rm -rf build/dist/root build/dist/parts
+pkgutil --payload-files "$PKG" | grep -qx "./TinyEdit.app/Contents/MacOS/TinyEdit" || fail "package payload is missing the app"
+SHA="$(shasum -a 256 "$PKG" | cut -d' ' -f1)"
 
 FINAL="$DIST/notes-$VERSION.md"
 {
@@ -76,19 +100,19 @@ FINAL="$DIST/notes-$VERSION.md"
 
 ### 安装 / Install
 
-需要 macOS 15 或更高版本、Apple 芯片（M 系列）Mac。下载 \`$(basename "$DMG")\`，打开后将 TinyEdit 拖入“应用程序”。本应用未经 Apple 公证，首次打开会被系统阻止：先打开一次，再到 **系统设置 ▸ 隐私与安全性** 点击 **仍要打开**；或在终端执行 \`xattr -dr com.apple.quarantine /Applications/TinyEdit.app\`。
+需要 macOS 15 或更高版本、Apple 芯片（M 系列）Mac。下载 \`$(basename "$PKG")\` 并双击，按安装器的提示完成，TinyEdit 会装进“应用程序”。安装包未经 Apple 公证，第一次双击会被系统阻止：到 **系统设置 ▸ 隐私与安全性** 点击 **仍要打开**；或在终端执行 \`xattr -d com.apple.quarantine ~/Downloads/$(basename "$PKG")\` 后再双击。
 
-Requires macOS 15 or later on an Apple silicon (M-series) Mac. Download \`$(basename "$DMG")\`, open it and drag TinyEdit into Applications. The app is not notarized by Apple, so macOS blocks the first launch: open it once, then click **Open Anyway** in **System Settings ▸ Privacy & Security**, or run \`xattr -dr com.apple.quarantine /Applications/TinyEdit.app\` in Terminal.
+Requires macOS 15 or later on an Apple silicon (M-series) Mac. Download \`$(basename "$PKG")\`, double-click it and follow the installer; TinyEdit is installed into Applications. The installer is not notarized by Apple, so macOS blocks the first double-click: click **Open Anyway** in **System Settings ▸ Privacy & Security**, or run \`xattr -d com.apple.quarantine ~/Downloads/$(basename "$PKG")\` in Terminal and double-click it again.
 
-SHA-256 (\`$(basename "$DMG")\`):
+SHA-256 (\`$(basename "$PKG")\`):
 \`$SHA\`
 EOF
 } >"$FINAL"
 
 if [ "$MODE" = --dry-run ]; then
-  echo "Dry run: $DMG"
+  echo "Dry run: $PKG"
   echo "Notes:   $FINAL"
   exit 0
 fi
-gh release create "$TAG" "$DMG" --target main --title "TinyEdit $VERSION" --notes-file "$FINAL" \
+gh release create "$TAG" "$PKG" --target main --title "TinyEdit $VERSION" --notes-file "$FINAL" \
   ${MODE:+--draft}
