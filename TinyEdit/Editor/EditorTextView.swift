@@ -114,6 +114,26 @@ final class EditorTextView: NSTextView {
         set { bufferUndoManager = newValue }
     }
 
+    /// Edit ▸ Undo / Redo send these up the responder chain, and in the SwiftUI window nothing above the
+    /// text view answers them, so ⌘Z and ⇧⌘Z did nothing. The text view runs its own (buffer's) manager.
+    @objc func undo(_ sender: Any?) {
+        guard let manager = undoManager, manager.canUndo else { return NSSound.beep() }
+        manager.undo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        guard let manager = undoManager, manager.canRedo else { return NSSound.beep() }
+        manager.redo()
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(undo(_:)): return isEditable && undoManager?.canUndo == true
+        case #selector(redo(_:)): return isEditable && undoManager?.canRedo == true
+        default: return super.validateUserInterfaceItem(item)
+        }
+    }
+
     /// The active buffer's indent style, resolved when a key is pressed. Nil means spaces of `tabWidth`.
     var indentStyle: (() -> IndentStyle)?
     /// The active buffer's language, read on Return and on clicks: Markdown continues task items, and

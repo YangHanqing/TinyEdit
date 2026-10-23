@@ -72,4 +72,31 @@ final class EditorSlotTests: XCTestCase {
             XCTAssertEqual(state.host.textView.string, "# Title")
         }
     }
+
+    /// Edit ▸ Undo / Redo send `undo:` / `redo:` to the first responder. The window answers them with its
+    /// own manager, not the buffer's, so ⌘Z did nothing unless the text view answers first. Tests have no key
+    /// window, so this walks the responder chain from the first responder, as the menu does.
+    func testUndoAndRedoActionsReachTheBuffersManager() async throws {
+        let state = AppState.shared
+        for _ in 0..<100 where !state.launchGateOpen { try await Task.sleep(for: .milliseconds(50)) }
+        let window = try XCTUnwrap(state.window)
+        XCTAssertTrue(state.openTranslationTab(""))
+        let id = try XCTUnwrap(state.session.selectedBufferID)
+        defer { state.removeBuffer(id) }
+        spin(0.3)
+        let textView = state.host.textView
+        window.makeFirstResponder(textView)
+        let undo = NSMenuItem(title: "Undo", action: #selector(EditorTextView.undo(_:)), keyEquivalent: "z")
+        let redo = NSMenuItem(title: "Redo", action: #selector(EditorTextView.redo(_:)), keyEquivalent: "Z")
+
+        textView.insertText("hello", replacementRange: textView.selectedRange())
+        spin(0.1)
+        XCTAssertTrue(textView.validateUserInterfaceItem(undo))
+        let responder = try XCTUnwrap(window.firstResponder)
+        XCTAssertTrue(responder.tryToPerform(#selector(EditorTextView.undo(_:)), with: undo))
+        XCTAssertEqual(textView.string, "")
+        XCTAssertTrue(textView.validateUserInterfaceItem(redo))
+        XCTAssertTrue(responder.tryToPerform(#selector(EditorTextView.redo(_:)), with: redo))
+        XCTAssertEqual(textView.string, "hello")
+    }
 }
